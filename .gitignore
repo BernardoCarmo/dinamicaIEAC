@@ -1,0 +1,10 @@
+node_modules
+dist
+.claude/scheduled_tasks.lock
+.env
+.env.local
+.firebase
+firebase-debug.log
+database-debug.log
+*.log
+.DS_Store
