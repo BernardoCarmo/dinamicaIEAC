@@ -1,16 +1,12 @@
 import { motion } from "framer-motion";
 import { COUNTRIES } from "../../config/gameConfig";
-import CountUpNumber from "../shared/CountUpNumber.jsx";
 
-export default function GdpPhase({ round, roundLabel }) {
-  const before = round?.balancesBeforeGdp || {};
-  const gdp = round?.gdpAmounts || {};
-
+// Não mostra nenhum valor numérico de PIB/saldo aqui — só a confirmação de
+// que o PIB da rodada foi creditado a todos os países.
+export default function GdpPhase({ roundLabel }) {
   return (
-    <div style={{ width: "100%" }}>
-      <div className="section-title" style={{ textAlign: "center" }}>
-        {roundLabel} — PIB creditado
-      </div>
+    <div style={{ width: "100%", textAlign: "center" }}>
+      <div className="section-title">{roundLabel} — PIB creditado</div>
       <div className="grid-countries">
         {COUNTRIES.map((c, i) => (
           <motion.div
@@ -20,19 +16,11 @@ export default function GdpPhase({ round, roundLabel }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.08 }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
               <span className="flag">{c.flag}</span>
               <strong>{c.name}</strong>
             </div>
-            <div style={{ fontSize: "1.8rem", marginTop: 8 }}>
-              <CountUpNumber
-                value={(before[c.id] ?? 0) + (gdp[c.id] ?? 0)}
-                initialValue={before[c.id] ?? 0}
-                duration={1600}
-                className="money positive"
-              />
-            </div>
-            <div style={{ color: "var(--positive)" }}>+{(gdp[c.id] ?? 0).toLocaleString("pt-BR")}</div>
+            <div style={{ fontSize: "1.6rem", marginTop: 8 }}>💰</div>
           </motion.div>
         ))}
       </div>

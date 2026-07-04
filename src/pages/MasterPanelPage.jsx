@@ -1,34 +1,46 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFirebaseValue } from "../hooks/useFirebaseValue";
 import { useServerTimeOffset } from "../hooks/useServerTimeOffset";
-import { COUNTRIES, PRIZES, ROUND_LABELS, FINAL_AUCTION_SILENCE_SEC } from "../config/gameConfig";
+import { COUNTRIES, ROUND_LABELS, PRIZES } from "../config/gameConfig";
 import {
   drawCountries,
   finishCardDeal,
   revealEvent,
   creditGdp,
   askCardQuestion,
-  startAuction,
+  prepareAuction,
+  startAuctionTimer,
   revealPrize,
   finalizeAuction,
   applyInflation,
   revealRanking,
-  advanceToRound2,
+  advanceRound,
+  nextPreliminaryRound,
   computeFinalistsAction,
   startFinal,
   endGame,
   resetGame,
+  setPrizes,
 } from "../engine/firebaseActions";
 import FlagBadge from "../components/shared/FlagBadge.jsx";
 import CountUpNumber from "../components/shared/CountUpNumber.jsx";
 import Countdown from "../components/shared/Countdown.jsx";
 import BidList from "../components/shared/BidList.jsx";
 
+const PRIZE_FIELDS = [
+  { key: "r1", label: "Rodada 1" },
+  { key: "r2", label: "Rodada 2" },
+  { key: "r3", label: "Rodada 3" },
+  { key: "final", label: "Final" },
+  { key: "wealth", label: "Campeão de Riqueza Real" },
+];
+
 export default function MasterPanelPage() {
   const navigate = useNavigate();
   const [session] = useFirebaseValue("session");
   const offset = useServerTimeOffset();
+  const [prizeDraft, setPrizeDraft] = useState(null);
 
   useEffect(() => {
     if (sessionStorage.getItem("isMestre") !== "true") {
@@ -36,30 +48,29 @@ export default function MasterPanelPage() {
     }
   }, [navigate]);
 
+  useEffect(() => {
+    if (prizeDraft === null && session) {
+      setPrizeDraft(session.prizes || PRIZES);
+    }
+  }, [session, prizeDraft]);
+
   const currentRoundKey = session?.currentRoundKey;
   const roundPhase = session?.roundPhase;
   const round = currentRoundKey ? session?.rounds?.[currentRoundKey] : null;
   const auction = round?.auction;
-  const isFinalRound = currentRoundKey === "final";
 
-  // Finaliza o leilão automaticamente quando o cronômetro chega a zero (rodadas
-  // normais) ou quando passam 20s sem lance novo (final) — o mestre só clica em
-  // "iniciar leilão", o resto é automático, como pede a especificação.
+  // Finaliza o leilão automaticamente quando o cronômetro chega a zero — o
+  // mestre só clica em "começar cronômetro", o resto é automático.
   useEffect(() => {
     if (roundPhase !== "auction" || !auction?.active) return;
     const id = setInterval(() => {
       const now = Date.now() + offset;
-      if (isFinalRound) {
-        const lastBidAt = auction.lastBidAt || now;
-        if (now - lastBidAt >= FINAL_AUCTION_SILENCE_SEC * 1000) {
-          finalizeAuction(currentRoundKey);
-        }
-      } else if (auction.endsAt != null && now >= auction.endsAt) {
+      if (auction.endsAt != null && now >= auction.endsAt) {
         finalizeAuction(currentRoundKey);
       }
     }, 500);
     return () => clearInterval(id);
-  }, [roundPhase, auction, offset, isFinalRound, currentRoundKey]);
+  }, [roundPhase, auction, offset, currentRoundKey]);
 
   const leaderCount = session ? Object.keys(session.leaders || {}).length : 0;
 
@@ -82,12 +93,19 @@ export default function MasterPanelPage() {
   async function handleReset() {
     if (window.confirm("Tem certeza? Isso apaga todo o progresso da partida atual.")) {
       await resetGame();
+      setPrizeDraft(null);
     }
   }
 
   function openTelao() {
     window.open("#/telao", "_blank");
   }
+
+  async function handleSavePrizes() {
+    await setPrizes(prizeDraft);
+  }
+
+  const nextRound = currentRoundKey ? nextPreliminaryRound(currentRoundKey) : null;
 
   return (
     <div className="page">
@@ -100,6 +118,25 @@ export default function MasterPanelPage() {
             </button>
             <button className="btn btn-danger" onClick={handleReset}>
               Reiniciar jogo
+            </button>
+          </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="section-title">Prêmios das etapas</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {PRIZE_FIELDS.map((f) => (
+              <div key={f.key}>
+                <label style={{ fontSize: "0.85rem", opacity: 0.8 }}>{f.label}</label>
+                <input
+                  type="text"
+                  value={prizeDraft?.[f.key] ?? ""}
+                  onChange={(e) => setPrizeDraft((d) => ({ ...d, [f.key]: e.target.value }))}
+                />
+              </div>
+            ))}
+            <button className="btn btn-primary" onClick={handleSavePrizes} style={{ alignSelf: "flex-start" }}>
+              Salvar prêmios
             </button>
           </div>
         </div>
@@ -148,13 +185,13 @@ export default function MasterPanelPage() {
               </div>
             )}
 
-            {roundPhase === "idle" && !isFinalRound && (
+            {roundPhase === "idle" && currentRoundKey !== "final" && (
               <button className="btn btn-primary" onClick={() => revealEvent(currentRoundKey)}>
                 Sortear evento
               </button>
             )}
 
-            {roundPhase === "vs" && isFinalRound && (
+            {roundPhase === "vs" && currentRoundKey === "final" && (
               <div>
                 <p>
                   Confronto final: {session.finalists?.map((id) => COUNTRIES.find((c) => c.id === id)?.name).join(" x ")}
@@ -197,14 +234,23 @@ export default function MasterPanelPage() {
                     </div>
                   ))}
                 </div>
+                <button className="btn btn-primary" onClick={() => prepareAuction(currentRoundKey)}>
+                  Ir para os bastidores do leilão
+                </button>
+              </div>
+            )}
+
+            {roundPhase === "auctionIntro" && (
+              <div>
+                <p>Telão está mostrando o recap de ataques e ações da rodada.</p>
                 <div style={{ display: "flex", gap: 10 }}>
                   {!auction?.prizeRevealed && (
                     <button className="btn" onClick={() => revealPrize(currentRoundKey)}>
                       Revelar prêmio
                     </button>
                   )}
-                  <button className="btn btn-primary" onClick={() => startAuction(currentRoundKey, offset)}>
-                    Iniciar leilão
+                  <button className="btn btn-primary" onClick={() => startAuctionTimer(currentRoundKey, offset)}>
+                    Começar cronômetro do leilão
                   </button>
                 </div>
               </div>
@@ -214,7 +260,7 @@ export default function MasterPanelPage() {
               <div>
                 {auction.prizeRevealed && (
                   <p>
-                    <strong>Prêmio:</strong> {PRIZES[currentRoundKey]}
+                    <strong>Prêmio:</strong> {session.prizes?.[currentRoundKey]}
                   </p>
                 )}
                 {!auction.prizeRevealed && (
@@ -222,12 +268,8 @@ export default function MasterPanelPage() {
                     Revelar prêmio
                   </button>
                 )}
-                <Countdown
-                  endsAt={isFinalRound ? (auction.lastBidAt || 0) + FINAL_AUCTION_SILENCE_SEC * 1000 : auction.endsAt}
-                  offset={offset}
-                  onComplete={() => finalizeAuction(currentRoundKey)}
-                />
-                <BidList bids={auction.bids} />
+                <Countdown endsAt={auction.endsAt} offset={offset} onComplete={() => finalizeAuction(currentRoundKey)} />
+                <BidList bids={auction.bids} revealed />
                 <button className="btn" style={{ marginTop: 10 }} onClick={() => finalizeAuction(currentRoundKey)}>
                   Finalizar leilão agora
                 </button>
@@ -259,7 +301,7 @@ export default function MasterPanelPage() {
             {roundPhase === "ranking" && (
               <div>
                 <p style={{ fontSize: "0.85rem", opacity: 0.7 }}>
-                  (Só você vê os valores abaixo — no telão da turma o ranking aparece sem saldo, e a Rodada 2 nem
+                  (Só você vê os valores abaixo — no telão da turma o ranking aparece sem saldo, e a Rodada 3 nem
                   mostra o ranking, pra manter o suspense até a final.)
                 </p>
                 <ol>
@@ -272,12 +314,12 @@ export default function MasterPanelPage() {
                     );
                   })}
                 </ol>
-                {currentRoundKey === "r1" && (
-                  <button className="btn btn-primary" onClick={advanceToRound2}>
-                    Avançar para Rodada 2
+                {nextRound && (
+                  <button className="btn btn-primary" onClick={() => advanceRound(nextRound)}>
+                    Avançar para {ROUND_LABELS[nextRound]}
                   </button>
                 )}
-                {currentRoundKey === "r2" && (
+                {currentRoundKey === "r3" && (
                   <button className="btn btn-primary" onClick={computeFinalistsAction}>
                     Apurar finalistas
                   </button>

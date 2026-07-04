@@ -1,24 +1,26 @@
-import { PRIZES, FINAL_AUCTION_SILENCE_SEC } from "../../config/gameConfig";
+import { useRemainingMs } from "../../hooks/useRemainingMs";
+import { isBidRevealed } from "../../engine/gameEngine";
 import Countdown from "../shared/Countdown.jsx";
 import BidList from "../shared/BidList.jsx";
 
-export default function AuctionPhase({ round, roundKey, roundLabel, offset, isFinalRound }) {
+export default function AuctionPhase({ round, roundKey, roundLabel, offset, prizeText }) {
   const auction = round?.auction;
+  const remainingMs = useRemainingMs(auction?.endsAt, offset);
   if (!auction) return null;
+
+  const isFinal = roundKey === "final";
+  const revealed = isBidRevealed(Math.ceil(remainingMs / 1000), isFinal);
 
   return (
     <div style={{ width: "100%", maxWidth: 720, textAlign: "center" }}>
       <div className="section-title">{roundLabel} — Leilão ao vivo</div>
-      {auction.prizeRevealed && (
-        <h2 style={{ marginBottom: 20 }}>Prêmio: {PRIZES[roundKey]}</h2>
-      )}
-      <Countdown
-        big
-        endsAt={isFinalRound ? (auction.lastBidAt || 0) + FINAL_AUCTION_SILENCE_SEC * 1000 : auction.endsAt}
-        offset={offset}
-      />
+      {auction.prizeRevealed && <h2 style={{ marginBottom: 20 }}>Prêmio: {prizeText}</h2>}
+      <Countdown big endsAt={auction.endsAt} offset={offset} />
+      <p style={{ opacity: 0.8 }}>
+        {revealed ? "Lances revelados!" : "Lances ocultos — só aparecem em certos momentos."}
+      </p>
       <div style={{ marginTop: 20 }}>
-        <BidList bids={auction.bids} />
+        <BidList bids={auction.bids} revealed={revealed} />
       </div>
     </div>
   );

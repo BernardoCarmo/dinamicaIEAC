@@ -1,7 +1,11 @@
 import { COUNTRIES } from "../../config/gameConfig";
 
-export default function BidList({ bids }) {
-  const list = Object.values(bids || {}).sort((a, b) => b.amount - a.amount);
+// Quando "revealed" é false (leilão às cegas fora da janela de revelação),
+// mostra só quem já deu lance, em ordem de chegada, sem valores nem destaque
+// pro maior — pra não vazar informação que deveria ficar oculta.
+export default function BidList({ bids, revealed = true }) {
+  const raw = Object.values(bids || {});
+  const list = revealed ? [...raw].sort((a, b) => b.amount - a.amount) : [...raw].sort((a, b) => a.ts - b.ts);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -15,15 +19,15 @@ export default function BidList({ bids }) {
               justifyContent: "space-between",
               padding: "10px 14px",
               borderRadius: 8,
-              background: i === 0 ? "var(--accent-strong)" : "var(--bg-panel)",
-              color: i === 0 ? "#1a1305" : "var(--text)",
-              fontWeight: i === 0 ? 700 : 400,
+              background: revealed && i === 0 ? "var(--accent-strong)" : "var(--bg-panel)",
+              color: revealed && i === 0 ? "#1a1305" : "var(--text)",
+              fontWeight: revealed && i === 0 ? 700 : 400,
             }}
           >
             <span>
               {country?.flag} {country?.name}
             </span>
-            <span className="money">{b.amount.toLocaleString("pt-BR")}</span>
+            <span className="money">{revealed ? b.amount.toLocaleString("pt-BR") : "🔒"}</span>
           </div>
         );
       })}

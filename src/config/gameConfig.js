@@ -13,18 +13,22 @@ export const MASTER_PASSWORD = "pringles";
 // variável de confronto da final (seção 8 das regras).
 export const TIER_ORDER = { pequeno: 0, medio: 1, grande: 2 };
 
-// Bônus de porte fixo aplicado ao PIB de cada rodada normal (rodada 1 e 2).
+// Bônus de porte fixo aplicado ao PIB de cada rodada normal (rodadas 1, 2 e 3).
 // Não se aplica na rodada final (lá entra a variável de confronto).
-// Valores pensados para reduzir a distância entre portes (ver README).
 export const TIER_BONUS = { grande: 0, medio: 0.2, pequeno: 0.45 };
 
-// Custo (% do saldo atual do atacante) e efeito (% de corte no PIB do alvo)
-// da carta de Sabotagem de PIB.
+// --- Cartas de ataque: custo e efeito ----------------------------------------
+// Sabotagem de PIB (Chile): paga X% do próprio saldo para cortar Y% do PIB do
+// alvo ESCOLHIDO nesta rodada.
 export const SABOTAGE_COST_PERCENT = 0.15;
 export const SABOTAGE_GDP_CUT_PERCENT = 0.3;
+// Roubo de PIB (Portugal): rouba X% do PIB de um alvo SORTEADO aleatoriamente
+// nesta rodada, custando um valor fixo de PIB próprio.
+export const STEAL_GDP_PERCENT = 0.1;
+export const STEAL_ATTACKER_PENALTY = 150;
 
 // --- Definições de cartas especiais -----------------------------------------
-// effectType: "zero_inflation" | "flat_bonus" | "sabotage_gdp"
+// effectType: "zero_inflation" | "flat_bonus" | "sabotage_gdp" | "steal_gdp"
 const CARD_ZERO_INFLATION = {
   id: "porto_seguro_cambial",
   name: "Porto Seguro Cambial",
@@ -42,16 +46,16 @@ const CARD_MEDIO_BONUS = {
   narrative: "Uma multinacional decide investir no seu país.",
 };
 
-const CARD_PEQUENO_BONUS_1300 = {
+const CARD_PORTUGAL_BONUS = {
   id: "pacote_ajuda",
   name: "Pacote de Ajuda Internacional",
   effectType: "flat_bonus",
-  effectValue: 1300,
-  effectText: "+1.300 moedas ao tesouro",
+  effectValue: 900,
+  effectText: "+900 moedas ao tesouro",
   narrative: "Seu país recebe um empréstimo emergencial de um organismo internacional.",
 };
 
-const CARD_PEQUENO_BONUS_900 = {
+const CARD_CHILE_BONUS = {
   id: "reserva_emergencia",
   name: "Reserva de Emergência",
   effectType: "flat_bonus",
@@ -66,15 +70,26 @@ const CARD_SABOTAGE = {
   effectType: "sabotage_gdp",
   effectText: `Paga ${Math.round(SABOTAGE_COST_PERCENT * 100)}% do seu saldo atual para cortar ${Math.round(
     SABOTAGE_GDP_CUT_PERCENT * 100
-  )}% do PIB que o país-alvo vai receber nesta rodada.`,
-  narrative: "Uma operação de espionagem econômica sabota a produção de um país rival.",
+  )}% do PIB de um país sorteado aleatoriamente nesta rodada.`,
+  narrative: "Uma operação de espionagem econômica sabota a produção de um país rival sorteado ao acaso.",
+};
+
+const CARD_ROUBO = {
+  id: "roubo_pib",
+  name: "Roubo de PIB",
+  effectType: "steal_gdp",
+  effectText: `Rouba ${Math.round(
+    STEAL_GDP_PERCENT * 100
+  )}% do PIB de um país escolhido por você nesta rodada, mas custa ${STEAL_ATTACKER_PENALTY} de PIB próprio.`,
+  narrative: "Um esquema de contrabando desvia parte da produção de um país vizinho escolhido a dedo.",
 };
 
 // Os 6 países pré-configurados. Troque nome/bandeira/tags pelos países reais
 // da sua turma antes da aula. "tier" deve ser "grande", "medio" ou "pequeno"
 // (2 de cada). "themeTags" define quem é afetado por quais eventos aleatórios
 // (seção 9): por exemplo, tags "commodities" e "guerra". "cards" é uma lista
-// (a maioria dos países tem 1 carta; um país pequeno tem 2, ver README).
+// (a maioria dos países tem 1 carta; os 2 países pequenos têm 2 cada: um bônus
+// fixo + uma carta de ataque única — Sabotagem sorteia o alvo, Roubo escolhe).
 export const COUNTRIES = [
   {
     id: "c1",
@@ -101,7 +116,7 @@ export const COUNTRIES = [
     name: "Brasil",
     flag: "🇧🇷",
     tier: "medio",
-    treasuryInitial: 2200,
+    treasuryInitial: 2500,
     gdpBase: 200,
     themeTags: ["commodities"],
     cards: [CARD_MEDIO_BONUS],
@@ -111,7 +126,7 @@ export const COUNTRIES = [
     name: "Alemanha",
     flag: "🇩🇪",
     tier: "medio",
-    treasuryInitial: 2200,
+    treasuryInitial: 2500,
     gdpBase: 200,
     themeTags: [],
     cards: [CARD_MEDIO_BONUS],
@@ -121,20 +136,20 @@ export const COUNTRIES = [
     name: "Portugal",
     flag: "🇵🇹",
     tier: "pequeno",
-    treasuryInitial: 1600,
+    treasuryInitial: 2000,
     gdpBase: 100,
     themeTags: [],
-    cards: [CARD_PEQUENO_BONUS_1300],
+    cards: [CARD_PORTUGAL_BONUS, CARD_ROUBO],
   },
   {
     id: "c6",
     name: "Chile",
     flag: "🇨🇱",
     tier: "pequeno",
-    treasuryInitial: 1600,
+    treasuryInitial: 2000,
     gdpBase: 100,
     themeTags: ["commodities"],
-    cards: [CARD_PEQUENO_BONUS_900, CARD_SABOTAGE],
+    cards: [CARD_CHILE_BONUS, CARD_SABOTAGE],
   },
 ];
 
@@ -198,12 +213,13 @@ export const EVENTS = [
 export const PRIZES = {
   r1: "Defina o prêmio físico da Rodada 1 antes da aula.",
   r2: "Defina o prêmio físico da Rodada 2 antes da aula.",
+  r3: "Defina o prêmio físico da Rodada 3 antes da aula.",
   final: "Defina o grande prêmio da Final antes da aula.",
   wealth: "Defina o prêmio do Campeão de Riqueza Real antes da aula.",
 };
 
 // Taxa de inflação base de cada rodada (pontos percentuais).
-export const INFLATION_RATES = { r1: 5, r2: 8, final: 12 };
+export const INFLATION_RATES = { r1: 5, r2: 7, r3: 9, final: 12 };
 
 // Variável de confronto da final, de acordo com a diferença de faixa entre os
 // 2 finalistas (seção 8). "randomSymmetric" sorteia +10% ou -10% igualmente
@@ -214,14 +230,29 @@ export const CONFRONT_VARIABLE = {
   2: { type: "weakerBonus", value: 0.3 },
 };
 
-export const AUCTION_DURATION_SEC = 180;
-export const FINAL_AUCTION_SILENCE_SEC = 20;
+// --- Leilão -------------------------------------------------------------------
+// Todas as rodadas (1, 2, 3 e final) têm 1 minuto fixo de negociação, sem
+// prorrogação. O leilão é "às cegas": os lances ficam ocultos (só mostra quem
+// já apostou, não o valor) exceto dentro das janelas de revelação abaixo,
+// definidas em segundos restantes no cronômetro (from = maior, to = menor).
+// Rodadas normais: revela só nos últimos 15s. Final: pisca — revela dos 35s
+// aos 30s restantes, esconde de novo, e revela de vez a partir dos 10s finais.
+export const AUCTION_DURATION_SEC = 60;
+export const NORMAL_REVEAL_WINDOWS = [{ from: 15, to: 0 }];
+export const FINAL_REVEAL_WINDOWS = [
+  { from: 35, to: 30 },
+  { from: 10, to: 0 },
+];
 export const MIN_BID_INCREMENT = 50;
+// Intervalo mínimo entre 2 lances do mesmo país, pra evitar clique repetido.
+export const BID_COOLDOWN_MS = 1000;
 
-export const ROUND_KEYS = ["r1", "r2", "final"];
+export const ROUND_KEYS = ["r1", "r2", "r3", "final"];
+export const PRELIMINARY_ROUND_KEYS = ["r1", "r2", "r3"];
 
 export const ROUND_LABELS = {
   r1: "Rodada 1",
   r2: "Rodada 2",
+  r3: "Rodada 3",
   final: "Final",
 };

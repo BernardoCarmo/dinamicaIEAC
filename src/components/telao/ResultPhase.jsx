@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
-import { COUNTRIES, PRIZES } from "../../config/gameConfig";
+import { COUNTRIES } from "../../config/gameConfig";
 
-export default function ResultPhase({ round, roundKey, roundLabel }) {
+export default function ResultPhase({ round, roundLabel, prizeText }) {
   const auction = round?.auction;
   const winner = COUNTRIES.find((c) => c.id === auction?.winnerId);
 
@@ -21,7 +21,7 @@ export default function ResultPhase({ round, roundKey, roundLabel }) {
           <p style={{ fontSize: "1.4rem" }}>
             Pagou <span className="money negative">{auction.amountPaid.toLocaleString("pt-BR")}</span> moedas
           </p>
-          <p style={{ fontSize: "1.2rem" }}>Prêmio: {PRIZES[roundKey]}</p>
+          <p style={{ fontSize: "1.2rem" }}>Prêmio: {prizeText}</p>
         </motion.div>
       ) : (
         <h2>Ninguém deu lance — o prêmio desta rodada não foi entregue.</h2>

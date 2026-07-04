@@ -1,10 +1,11 @@
 import { motion } from "framer-motion";
-import { COUNTRIES, PRIZES } from "../../config/gameConfig";
+import { COUNTRIES } from "../../config/gameConfig";
 
 export default function ClosingScreen({ session }) {
   const champion = COUNTRIES.find((c) => c.id === session.champion);
   const wealthChampion = COUNTRIES.find((c) => c.id === session.wealthChampion);
   const ranking = session.finalRanking || [];
+  const prizes = session.prizes || {};
 
   return (
     <div style={{ width: "100%", maxWidth: 800, display: "flex", flexDirection: "column", gap: 30 }}>
@@ -19,7 +20,7 @@ export default function ClosingScreen({ session }) {
           <>
             <div style={{ fontSize: "6rem" }}>{champion.flag}</div>
             <h1>{champion.name}</h1>
-            <p style={{ fontSize: "1.2rem" }}>Prêmio: {PRIZES.final}</p>
+            <p style={{ fontSize: "1.2rem" }}>Prêmio: {prizes.final}</p>
           </>
         ) : (
           <p>Nenhum vencedor na final.</p>
@@ -38,7 +39,7 @@ export default function ClosingScreen({ session }) {
           <>
             <div style={{ fontSize: "6rem" }}>{wealthChampion.flag}</div>
             <h1>{wealthChampion.name}</h1>
-            <p style={{ fontSize: "1.2rem" }}>Prêmio: {PRIZES.wealth}</p>
+            <p style={{ fontSize: "1.2rem" }}>Prêmio: {prizes.wealth}</p>
           </>
         )}
         <ol style={{ textAlign: "left", maxWidth: 320, margin: "20px auto 0" }}>

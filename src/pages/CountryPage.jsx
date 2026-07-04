@@ -2,15 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFirebaseValue } from "../hooks/useFirebaseValue";
 import { useServerTimeOffset } from "../hooks/useServerTimeOffset";
-import {
-  COUNTRIES,
-  PRIZES,
-  MIN_BID_INCREMENT,
-  ROUND_KEYS,
-  ROUND_LABELS,
-  FINAL_AUCTION_SILENCE_SEC,
-} from "../config/gameConfig";
-import { leaderDecideCard, useSabotageCard, placeBid } from "../engine/firebaseActions";
+import { useRemainingMs } from "../hooks/useRemainingMs";
+import { COUNTRIES, MIN_BID_INCREMENT, ROUND_KEYS, ROUND_LABELS, BID_COOLDOWN_MS } from "../config/gameConfig";
+import { leaderDecideCard, useSabotageCard, useTheftCard, placeBid } from "../engine/firebaseActions";
+import { isBidRevealed } from "../engine/gameEngine";
 import CountUpNumber from "../components/shared/CountUpNumber.jsx";
 import FlagBadge from "../components/shared/FlagBadge.jsx";
 import Countdown from "../components/shared/Countdown.jsx";
@@ -23,7 +18,9 @@ export default function CountryPage() {
   const offset = useServerTimeOffset();
   const [bidAmount, setBidAmount] = useState(0);
   const [bidError, setBidError] = useState("");
-  const [sabotageTarget, setSabotageTarget] = useState(null);
+  const [theftTarget, setTheftTarget] = useState(null);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [, forceTick] = useState(0);
 
   const countryId = useMemo(() => {
     const assignment = session?.assignment || {};
@@ -47,6 +44,10 @@ export default function CountryPage() {
   const countryState = session?.countries?.[countryId];
 
   const auction = round?.auction;
+  const remainingMs = useRemainingMs(auction?.endsAt, offset);
+  const isFinalRound = currentRoundKey === "final";
+  const revealed = isBidRevealed(Math.ceil(remainingMs / 1000), isFinalRound);
+
   const bids = auction?.bids || {};
   const highestBid = Object.values(bids).reduce((max, b) => Math.max(max, b.amount), 0);
   const minNextBid = highestBid + MIN_BID_INCREMENT;
@@ -54,6 +55,13 @@ export default function CountryPage() {
   useEffect(() => {
     setBidAmount(minNextBid);
   }, [minNextBid, currentRoundKey]);
+
+  // Só pra re-renderizar durante o cooldown de 1s do lance.
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const id = setInterval(() => forceTick((t) => t + 1), 200);
+    return () => clearInterval(id);
+  }, [cooldownUntil]);
 
   if (!session || !countryConfig || !countryState) {
     return (
@@ -63,9 +71,9 @@ export default function CountryPage() {
     );
   }
 
-  const isFinalRound = currentRoundKey === "final";
   const finalists = session.finalists || [];
   const isFinalist = finalists.includes(countryId);
+  const prizes = session.prizes || {};
 
   let statusLabel = "Ativo na disputa";
   if (session.phase === "ended") {
@@ -86,24 +94,34 @@ export default function CountryPage() {
   const inAuctionPhase = roundPhase === "auction" && auction?.active;
   const eligibleForThisAuction = !isFinalRound || isFinalist;
   const canAffordMinBid = balance >= minNextBid;
+  const onCooldown = Date.now() < cooldownUntil;
 
   async function handleUseCard(card) {
-    if (card.effectType === "sabotage_gdp") {
-      setSabotageTarget(card.id);
+    if (card.effectType === "steal_gdp") {
+      setTheftTarget(card.id);
       return;
     }
     if (!window.confirm(`Usar agora a carta "${card.name}"? Isso só pode ser feito uma vez em todo o jogo.`)) {
       return;
     }
+    if (card.effectType === "sabotage_gdp") {
+      if (!window.confirm("O alvo será sorteado aleatoriamente. Confirmar Sabotagem de PIB?")) return;
+      await useSabotageCard(currentRoundKey, countryId, card.id);
+      return;
+    }
     await leaderDecideCard(currentRoundKey, countryId, card.id, true);
   }
 
-  async function handleConfirmSabotage(cardId, targetId) {
-    if (!window.confirm(`Confirmar Sabotagem de PIB contra ${COUNTRIES.find((c) => c.id === targetId)?.name}? Vai custar 15% do seu saldo atual.`)) {
+  async function handleConfirmTheft(cardId, targetId) {
+    if (
+      !window.confirm(
+        `Confirmar Roubo de PIB contra ${COUNTRIES.find((c) => c.id === targetId)?.name}? Vai custar 150 de PIB próprio.`
+      )
+    ) {
       return;
     }
-    await useSabotageCard(currentRoundKey, countryId, targetId, cardId);
-    setSabotageTarget(null);
+    await useTheftCard(currentRoundKey, countryId, targetId, cardId);
+    setTheftTarget(null);
   }
 
   async function handleDeclineCard(cardId) {
@@ -115,6 +133,7 @@ export default function CountryPage() {
     setBidError("");
     try {
       await placeBid(currentRoundKey, countryId, Number(bidAmount), offset);
+      setCooldownUntil(Date.now() + BID_COOLDOWN_MS);
     } catch (err) {
       setBidError(err.message);
     }
@@ -157,17 +176,17 @@ export default function CountryPage() {
                 <strong>Efeito:</strong> {card.effectText}
               </p>
 
-              {sabotageTarget === card.id ? (
+              {theftTarget === card.id ? (
                 <div>
                   <p>Escolha o país-alvo:</p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                     {COUNTRIES.filter((c) => c.id !== countryId).map((c) => (
-                      <button key={c.id} className="btn" onClick={() => handleConfirmSabotage(card.id, c.id)}>
+                      <button key={c.id} className="btn" onClick={() => handleConfirmTheft(card.id, c.id)}>
                         {c.flag} {c.name}
                       </button>
                     ))}
                   </div>
-                  <button className="btn" onClick={() => setSabotageTarget(null)}>
+                  <button className="btn" onClick={() => setTheftTarget(null)}>
                     Cancelar
                   </button>
                 </div>
@@ -196,47 +215,38 @@ export default function CountryPage() {
             <div className="section-title">Leilão — {ROUND_LABELS[currentRoundKey]}</div>
             {auction.prizeRevealed && (
               <p>
-                <strong>Prêmio:</strong> {PRIZES[currentRoundKey]}
+                <strong>Prêmio:</strong> {prizes[currentRoundKey]}
               </p>
             )}
-            <Countdown
-              endsAt={
-                isFinalRound
-                  ? (auction.lastBidAt || 0) + FINAL_AUCTION_SILENCE_SEC * 1000
-                  : auction.endsAt
-              }
-              offset={offset}
-              onComplete={() => {}}
-            />
-            {isFinalRound && (
-              <p style={{ fontSize: "0.85rem" }}>
-                O leilão da final termina quando passarem 20s sem lance novo.
-              </p>
-            )}
-            <BidList bids={bids} />
+            <Countdown endsAt={auction.endsAt} offset={offset} onComplete={() => {}} />
+            <p style={{ fontSize: "0.85rem" }}>
+              {revealed ? "Lances revelados agora!" : "Leilão às cegas: os lances estão ocultos no momento."}
+            </p>
+            <BidList bids={bids} revealed={revealed} />
             {canAffordMinBid ? (
               <form onSubmit={handleBid} style={{ display: "flex", gap: 10, marginTop: 12 }}>
                 <input
                   type="number"
-                  min={minNextBid}
+                  min={revealed ? minNextBid : MIN_BID_INCREMENT}
                   max={balance}
                   step={50}
                   value={bidAmount}
                   onChange={(e) => setBidAmount(e.target.value)}
                 />
-                <button className="btn btn-primary" type="submit">
-                  Dar lance
+                <button className="btn btn-primary" type="submit" disabled={onCooldown}>
+                  {onCooldown ? "Aguarde..." : "Dar lance"}
                 </button>
               </form>
             ) : (
               <p style={{ color: "var(--negative)", marginTop: 12 }}>
-                Seu saldo ({balance.toLocaleString("pt-BR")}) não é suficiente para cobrir o lance mínimo
-                ({minNextBid.toLocaleString("pt-BR")}). Você não pode dar lances nesta rodada.
+                Seu saldo ({balance.toLocaleString("pt-BR")}) pode não ser suficiente pra continuar dando lances.
               </p>
             )}
             <p style={{ fontSize: "0.8rem", marginTop: 6 }}>
-              Lance mínimo: {minNextBid.toLocaleString("pt-BR")} moedas. Máximo: seu saldo atual (
-              {balance.toLocaleString("pt-BR")}).
+              {revealed
+                ? `Lance mínimo: ${minNextBid.toLocaleString("pt-BR")} moedas.`
+                : "O valor mínimo do lance está oculto — supere o lance mais alto atual (você não sabe qual é)."}{" "}
+              Máximo: seu saldo atual ({balance.toLocaleString("pt-BR")}).
             </p>
             {bidError && <p style={{ color: "var(--negative)" }}>{bidError}</p>}
           </div>

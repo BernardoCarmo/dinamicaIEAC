@@ -7,10 +7,12 @@ import { ref, get, set, update, push } from "firebase/database";
 import { db } from "../firebase";
 import {
   COUNTRIES,
+  PRIZES,
   INFLATION_RATES,
   MIN_BID_INCREMENT,
   AUCTION_DURATION_SEC,
   SABOTAGE_COST_PERCENT,
+  BID_COOLDOWN_MS,
 } from "../config/gameConfig";
 import {
   drawCountryAssignment,
@@ -22,9 +24,15 @@ import {
   computeFinalists,
   computeWealthChampion,
   computeRanking,
+  isBidRevealed,
 } from "./gameEngine";
 
 const SESSION_PATH = "session";
+// r2 não pode ser vencida por quem venceu r1; r3 não pode ser vencida por quem
+// venceu r2 (regra "quem venceu não vence o próximo").
+const BARRED_FROM_PREVIOUS_WINNER = { r2: "r1", r3: "r2" };
+// Mapa de "próxima rodada preliminar" usado pelo botão de avançar do mestre.
+const NEXT_PRELIMINARY_ROUND = { r1: "r2", r2: "r3" };
 
 function sessionRef(...segments) {
   return ref(db, [SESSION_PATH, ...segments].join("/"));
@@ -64,6 +72,7 @@ function defaultSession() {
     champion: null,
     wealthChampion: null,
     ranking: null,
+    prizes: { ...PRIZES },
   };
 }
 
@@ -76,6 +85,11 @@ export async function ensureSessionInitialized() {
 
 export async function resetGame() {
   await set(sessionRef(), defaultSession());
+}
+
+// --- Prêmios (configuráveis pelo mestre) --------------------------------------
+export async function setPrizes(prizes) {
+  await set(sessionRef("prizes"), prizes);
 }
 
 // --- Login / sala de espera --------------------------------------------------
@@ -113,9 +127,10 @@ export async function finishCardDeal() {
 }
 
 // --- Ciclo da rodada ----------------------------------------------------------
-// Ordem: evento -> pergunta sobre cartas -> crédito de PIB -> leilão -> resultado
-// -> inflação -> ranking. As cartas vêm antes do PIB para que a Sabotagem de
-// PIB (se usada) já afete o PIB creditado nesta mesma rodada.
+// Ordem: evento -> pergunta sobre cartas -> crédito de PIB -> "bastidores" do
+// leilão (recapitulação, sem cronômetro ainda) -> leilão (cronômetro ligado)
+// -> resultado -> inflação -> ranking. As cartas vêm antes do PIB para que
+// Sabotagem/Roubo (se usadas) já afetem o PIB creditado nesta mesma rodada.
 export async function revealEvent(roundKey) {
   const event = drawEvent();
   await update(sessionRef(), { currentRoundKey: roundKey, roundPhase: "event" });
@@ -150,18 +165,33 @@ export async function leaderDecideCard(roundKey, countryId, cardId, useCard) {
   await update(sessionRef(), updates);
 }
 
-// Carta de Sabotagem de PIB: exige escolher um alvo, tem custo imediato e
-// reduz o PIB que o alvo vai receber nesta rodada (aplicado em creditGdp).
-export async function useSabotageCard(roundKey, attackerCountryId, targetCountryId, cardId) {
+// Carta de Sabotagem de PIB (Chile): alvo é SORTEADO aleatoriamente. Tem custo
+// imediato (% do saldo atual) e reduz o PIB que o alvo vai receber nesta
+// rodada (aplicado em creditGdp).
+export async function useSabotageCard(roundKey, attackerCountryId, cardId) {
   const balSnap = await get(sessionRef("countries", attackerCountryId, "balance"));
   const balance = balSnap.val() ?? 0;
   const cost = Math.round(balance * SABOTAGE_COST_PERCENT);
+
+  const others = COUNTRIES.map((c) => c.id).filter((id) => id !== attackerCountryId);
+  const targetId = others[Math.floor(Math.random() * others.length)];
 
   await update(sessionRef(), {
     [`countries/${attackerCountryId}/balance`]: balance - cost,
     [`countries/${attackerCountryId}/cardsUsed/${cardId}`]: true,
     [`countries/${attackerCountryId}/cardsUsedInRound/${cardId}`]: roundKey,
-    [`rounds/${roundKey}/sabotage`]: { attackerId: attackerCountryId, targetId: targetCountryId, cost },
+    [`rounds/${roundKey}/sabotage`]: { attackerId: attackerCountryId, targetId, cost },
+    [`rounds/${roundKey}/cardQuestion/responses/${attackerCountryId}/${cardId}`]: true,
+  });
+}
+
+// Carta de Roubo de PIB (Portugal): alvo é ESCOLHIDO pelo líder. Custa um
+// valor fixo de PIB do próprio atacante nesta rodada (aplicado em creditGdp).
+export async function useTheftCard(roundKey, attackerCountryId, targetCountryId, cardId) {
+  await update(sessionRef(), {
+    [`countries/${attackerCountryId}/cardsUsed/${cardId}`]: true,
+    [`countries/${attackerCountryId}/cardsUsedInRound/${cardId}`]: roundKey,
+    [`rounds/${roundKey}/theft`]: { attackerId: attackerCountryId, targetId: targetCountryId },
     [`rounds/${roundKey}/cardQuestion/responses/${attackerCountryId}/${cardId}`]: true,
   });
 }
@@ -182,6 +212,7 @@ export async function creditGdp(roundKey) {
     finalists,
     confront: round.confront,
     sabotage: round.sabotage || null,
+    theft: round.theft || null,
   });
 
   const balancesBefore = {};
@@ -198,20 +229,29 @@ export async function creditGdp(roundKey) {
   await update(sessionRef(), updates);
 }
 
-export async function startAuction(roundKey, serverTimeOffset = 0) {
-  const isFinal = roundKey === "final";
-  const now = Date.now() + serverTimeOffset;
+// Prepara a tela de "bastidores" do leilão (recapitulação de ataques e ações
+// da rodada) — o cronômetro AINDA não começa aqui.
+export async function prepareAuction(roundKey) {
   await set(sessionRef("rounds", roundKey, "auction"), {
-    active: true,
-    endsAt: isFinal ? null : now + AUCTION_DURATION_SEC * 1000,
-    lastBidAt: isFinal ? now : null,
+    active: false,
+    endsAt: null,
     bids: {},
     winnerId: null,
     amountPaid: 0,
     prizeRevealed: false,
     finalized: false,
   });
+  await update(sessionRef(), { roundPhase: "auctionIntro" });
+}
+
+// Liga o cronômetro de verdade (chamado depois da tela de bastidores).
+export async function startAuctionTimer(roundKey, serverTimeOffset = 0) {
+  const now = Date.now() + serverTimeOffset;
   await update(sessionRef(), { roundPhase: "auction" });
+  await update(sessionRef("rounds", roundKey, "auction"), {
+    active: true,
+    endsAt: now + AUCTION_DURATION_SEC * 1000,
+  });
 }
 
 export async function revealPrize(roundKey) {
@@ -226,24 +266,33 @@ export async function placeBid(roundKey, countryId, amount, serverTimeOffset = 0
   const auction = auctionSnap.val() || {};
   const balance = balanceSnap.val() ?? 0;
   const bids = auction.bids ? Object.values(auction.bids) : [];
+  const now = Date.now() + serverTimeOffset;
+
+  const ownBids = bids.filter((b) => b.countryId === countryId);
+  const lastOwnBidTs = ownBids.reduce((max, b) => Math.max(max, b.ts), 0);
+  if (lastOwnBidTs && now - lastOwnBidTs < BID_COOLDOWN_MS) {
+    throw new Error("Espere 1 segundo entre um lance e outro.");
+  }
+
   const highest = bids.reduce((max, b) => Math.max(max, b.amount), 0);
   const minNext = highest + MIN_BID_INCREMENT;
+  const remainingSec = auction.endsAt ? Math.ceil((auction.endsAt - now) / 1000) : 0;
+  const revealed = isBidRevealed(remainingSec, roundKey === "final");
 
   if (amount < minNext) {
-    throw new Error(`O lance precisa ser de pelo menos ${minNext} moedas.`);
+    throw new Error(
+      revealed
+        ? `O lance precisa ser de pelo menos ${minNext} moedas.`
+        : "Lance recusado: não supera o lance mais alto atual (ainda oculto)."
+    );
   }
   if (amount > balance) {
     throw new Error(`Você não pode apostar mais do que seu saldo atual (${balance} moedas).`);
   }
 
-  const now = Date.now() + serverTimeOffset;
   const bidsRef = sessionRef("rounds", roundKey, "auction", "bids");
   const newBidRef = push(bidsRef);
   await set(newBidRef, { countryId, amount, ts: now });
-
-  if (roundKey === "final") {
-    await set(sessionRef("rounds", roundKey, "auction", "lastBidAt"), now);
-  }
 }
 
 export async function finalizeAuction(roundKey) {
@@ -255,8 +304,15 @@ export async function finalizeAuction(roundKey) {
   // Evita finalizar duas vezes (ex: watcher do cronômetro disparando 2x).
   if (auction.finalized) return;
 
+  let barredCountryId = null;
+  const barredFromRound = BARRED_FROM_PREVIOUS_WINNER[roundKey];
+  if (barredFromRound) {
+    const prevWinnerSnap = await get(sessionRef("rounds", barredFromRound, "winnerId"));
+    barredCountryId = prevWinnerSnap.val() || null;
+  }
+
   const bids = auction.bids ? Object.values(auction.bids) : [];
-  const { winnerId, amountPaid } = resolveAuction(bids);
+  const { winnerId, amountPaid } = resolveAuction(bids, barredCountryId);
 
   const updates = {
     [`rounds/${roundKey}/auction/active`]: false,
@@ -321,6 +377,7 @@ export async function revealRanking(roundKey) {
   const countries = countriesSnap.val() || {};
   const round = roundSnap.val() || {};
   const sabotage = round.sabotage || null;
+  const theft = round.theft || null;
 
   const updates = { roundPhase: "ranking" };
   const finalBalances = {};
@@ -346,6 +403,14 @@ export async function revealRanking(roundKey) {
         effectText: "Seu PIB desta rodada foi cortado em 30%.",
       });
     }
+    if (theft?.targetId === c.id) {
+      const attackerName = countryConfig(theft.attackerId)?.name ?? "um país rival";
+      cardsRevealed.push({
+        name: "Roubo de PIB sofrido",
+        narrative: `${attackerName} roubou parte do seu PIB nesta rodada.`,
+        effectText: "10% do seu PIB desta rodada foi desviado.",
+      });
+    }
 
     const historyEntry = {
       roundKey,
@@ -369,8 +434,13 @@ export async function revealRanking(roundKey) {
   await update(sessionRef(), updates);
 }
 
-export async function advanceToRound2() {
-  await update(sessionRef(), { currentRoundKey: "r2", roundPhase: "idle" });
+// Avança para a próxima rodada preliminar (r1 -> r2 -> r3).
+export async function advanceRound(nextRoundKey) {
+  await update(sessionRef(), { currentRoundKey: nextRoundKey, roundPhase: "idle" });
+}
+
+export function nextPreliminaryRound(roundKey) {
+  return NEXT_PRELIMINARY_ROUND[roundKey] ?? null;
 }
 
 // Sempre resolve os 2 finalistas automaticamente (ver critério de desempate em

@@ -11,6 +11,11 @@ import {
   TIER_ORDER,
   CONFRONT_VARIABLE,
   SABOTAGE_GDP_CUT_PERCENT,
+  STEAL_GDP_PERCENT,
+  STEAL_ATTACKER_PENALTY,
+  PRELIMINARY_ROUND_KEYS,
+  NORMAL_REVEAL_WINDOWS,
+  FINAL_REVEAL_WINDOWS,
 } from "../config/gameConfig";
 
 function shuffle(array) {
@@ -71,12 +76,13 @@ export function computeConfrontVariable(finalistIds) {
 }
 
 // --- Cálculo do PIB da rodada ------------------------------------------------
-// roundKey: 'r1' | 'r2' | 'final'
+// roundKey: 'r1' | 'r2' | 'r3' | 'final'
 // event: objeto retornado por drawEvent()
 // finalists: [id, id] (apenas relevante quando roundKey === 'final')
 // confront: resultado de computeConfrontVariable (apenas na final)
-// sabotage: { attackerId, targetId } se alguém usou a carta de Sabotagem de PIB nesta rodada
-export function computeGdpForRound({ roundKey, event, finalists, confront, sabotage }) {
+// sabotage: { attackerId, targetId } se alguém usou a carta de Sabotagem de PIB
+// theft: { attackerId, targetId } se alguém usou a carta de Roubo de PIB
+export function computeGdpForRound({ roundKey, event, finalists, confront, sabotage, theft }) {
   const gdpAmounts = {};
   const isFinal = roundKey === "final";
 
@@ -103,7 +109,24 @@ export function computeGdpForRound({ roundKey, event, finalists, confront, sabot
     gdpAmounts[country.id] = Math.round(amount);
   }
 
+  // Roubo de PIB: aplicado depois, sobre o PIB já calculado (inclusive já
+  // afetado pela sabotagem, se houver) — rouba uma fatia do alvo sorteado e
+  // cobra um custo fixo do atacante.
+  if (theft) {
+    const stolen = Math.round(gdpAmounts[theft.targetId] * STEAL_GDP_PERCENT);
+    gdpAmounts[theft.targetId] -= stolen;
+    gdpAmounts[theft.attackerId] += stolen - STEAL_ATTACKER_PENALTY;
+  }
+
   return gdpAmounts;
+}
+
+// --- Janelas de revelação dos lances no leilão às cegas -----------------------
+// remainingSec: segundos restantes no cronômetro do leilão
+// isFinal: se é o leilão da rodada final (padrão de revelação diferente)
+export function isBidRevealed(remainingSec, isFinal) {
+  const windows = isFinal ? FINAL_REVEAL_WINDOWS : NORMAL_REVEAL_WINDOWS;
+  return windows.some((w) => remainingSec <= w.from && remainingSec >= w.to);
 }
 
 // --- Inflação cumulativa -----------------------------------------------------
@@ -127,28 +150,40 @@ export function computeInflation({ balances, baseRate, event, cardExemptCountryI
 
 // --- Resolução do leilão -----------------------------------------------------
 // bids: [{ countryId, amount, ts }]
-export function resolveAuction(bids) {
+// barredCountryId: país que venceu o leilão anterior e não pode vencer este
+// (regra "quem venceu não vence o próximo") — se ele for o único a dar lance,
+// vence mesmo assim, pois bloquear não teria propósito sem alternativa.
+export function resolveAuction(bids, barredCountryId = null) {
   if (!bids || bids.length === 0) {
     return { winnerId: null, amountPaid: 0 };
   }
-  const highest = bids.reduce((best, b) => (b.amount > best.amount ? b : best), bids[0]);
+  const eligibleBids = barredCountryId ? bids.filter((b) => b.countryId !== barredCountryId) : bids;
+  const pool = eligibleBids.length > 0 ? eligibleBids : bids;
+  const highest = pool.reduce((best, b) => (b.amount > best.amount ? b : best), pool[0]);
   return { winnerId: highest.countryId, amountPaid: highest.amount };
 }
 
 // --- Apuração dos finalistas (seção 11) --------------------------------------
 // Sempre resolve automaticamente para exatamente 2 finalistas, em cascata:
-// 1) quem venceu mais leilões pré-final; 2) em empate, quem apostou mais no
-// total (ganhando ou perdendo); 3) em novo empate, quem tem maior saldo atual;
-// 4) se ainda empatar, sorteio aleatório. Nunca exige decisão manual do mestre.
-// rounds: { r1: { winnerId, auction: { bids } }, r2: { winnerId, auction: { bids } } }
+// 1) quem venceu mais leilões nas rodadas preliminares; 2) em empate, quem
+// apostou mais no total (ganhando ou perdendo); 3) em novo empate, quem tem
+// maior saldo atual; 4) se ainda empatar, sorteio aleatório. Nunca exige
+// decisão manual do mestre. Funciona com qualquer nº de rodadas preliminares
+// (hoje: r1, r2, r3).
+// rounds: { r1: { winnerId, auction: { bids } }, r2: {...}, r3: {...} }
 // balances: { countryId: saldoAtual } — usado no 3º critério de desempate
 export function computeFinalists(rounds, balances = {}) {
-  const w1 = rounds.r1?.winnerId ?? null;
-  const w2 = rounds.r2?.winnerId ?? null;
-
+  const winCounts = {};
   const totalBidsByCountry = {};
-  for (const country of COUNTRIES) totalBidsByCountry[country.id] = 0;
-  for (const roundKey of ["r1", "r2"]) {
+  for (const country of COUNTRIES) {
+    winCounts[country.id] = 0;
+    totalBidsByCountry[country.id] = 0;
+  }
+
+  for (const roundKey of PRELIMINARY_ROUND_KEYS) {
+    const winnerId = rounds[roundKey]?.winnerId;
+    if (winnerId) winCounts[winnerId] = (winCounts[winnerId] || 0) + 1;
+
     const bids = rounds[roundKey]?.auction?.bids || [];
     const bidList = Array.isArray(bids) ? bids : Object.values(bids);
     for (const bid of bidList) {
@@ -156,38 +191,23 @@ export function computeFinalists(rounds, balances = {}) {
     }
   }
 
-  function pickBest(candidateIds) {
-    let pool = topTiedBy(candidateIds, (id) => totalBidsByCountry[id] || 0);
-    if (pool.length > 1) pool = topTiedBy(pool, (id) => balances[id] ?? 0);
-    if (pool.length > 1) pool = shuffle(pool);
-    return pool[0];
+  // Seed de desempate aleatório fixado nesta chamada, pra ordenação estável.
+  const randomSeed = {};
+  for (const id of shuffle(COUNTRIES.map((c) => c.id))) {
+    randomSeed[id] = Object.keys(randomSeed).length;
   }
 
-  if (w1 && w2 && w1 !== w2) {
-    return { finalists: [w1, w2] };
-  }
+  const sorted = [...COUNTRIES.map((c) => c.id)].sort((a, b) => {
+    if (winCounts[b] !== winCounts[a]) return winCounts[b] - winCounts[a];
+    if (totalBidsByCountry[b] !== totalBidsByCountry[a])
+      return totalBidsByCountry[b] - totalBidsByCountry[a];
+    const balA = balances[a] ?? 0;
+    const balB = balances[b] ?? 0;
+    if (balB !== balA) return balB - balA;
+    return randomSeed[a] - randomSeed[b];
+  });
 
-  if (w1 && w2 && w1 === w2) {
-    const candidates = COUNTRIES.map((c) => c.id).filter((id) => id !== w1);
-    return { finalists: [w1, pickBest(candidates)] };
-  }
-
-  const singleWinner = w1 || w2;
-  if (singleWinner) {
-    const candidates = COUNTRIES.map((c) => c.id).filter((id) => id !== singleWinner);
-    return { finalists: [singleWinner, pickBest(candidates)] };
-  }
-
-  // Ninguém venceu nenhuma rodada (ninguém deu lance em nenhum leilão pré-final).
-  const allIds = COUNTRIES.map((c) => c.id);
-  const first = pickBest(allIds);
-  const second = pickBest(allIds.filter((id) => id !== first));
-  return { finalists: [first, second] };
-}
-
-function topTiedBy(ids, keyFn) {
-  const best = Math.max(...ids.map(keyFn));
-  return ids.filter((id) => keyFn(id) === best);
+  return { finalists: [sorted[0], sorted[1]] };
 }
 
 // --- Campeão de riqueza real --------------------------------------------------

@@ -4,6 +4,7 @@ import { COUNTRIES, ROUND_LABELS } from "../config/gameConfig";
 import EventPhase from "../components/telao/EventPhase.jsx";
 import GdpPhase from "../components/telao/GdpPhase.jsx";
 import CardsPhase from "../components/telao/CardsPhase.jsx";
+import AuctionIntroPhase from "../components/telao/AuctionIntroPhase.jsx";
 import AuctionPhase from "../components/telao/AuctionPhase.jsx";
 import ResultPhase from "../components/telao/ResultPhase.jsx";
 import InflationPhase from "../components/telao/InflationPhase.jsx";
@@ -11,6 +12,8 @@ import RankingPhase from "../components/telao/RankingPhase.jsx";
 import VsScreen from "../components/telao/VsScreen.jsx";
 import ClosingScreen from "../components/telao/ClosingScreen.jsx";
 import CardDealPhase from "../components/telao/CardDealPhase.jsx";
+
+const PREVIOUS_ROUND = { r2: "r1", r3: "r2", final: "r3" };
 
 export default function TelaoPage() {
   const [session] = useFirebaseValue("session");
@@ -28,7 +31,7 @@ export default function TelaoPage() {
   const roundPhase = session.roundPhase;
   const round = currentRoundKey ? session.rounds?.[currentRoundKey] : null;
   const roundLabel = currentRoundKey ? ROUND_LABELS[currentRoundKey] : "";
-  const isFinalRound = currentRoundKey === "final";
+  const prizes = session.prizes || {};
 
   let content = null;
 
@@ -73,9 +76,30 @@ export default function TelaoPage() {
   } else if (roundPhase === "event") {
     content = <EventPhase event={round?.event} roundLabel={roundLabel} />;
   } else if (roundPhase === "gdp") {
-    content = <GdpPhase round={round} roundLabel={roundLabel} />;
+    content = <GdpPhase roundLabel={roundLabel} />;
   } else if (roundPhase === "cardQuestion") {
     content = <CardsPhase round={round} roundLabel={roundLabel} />;
+  } else if (roundPhase === "auctionIntro") {
+    const prevKey = PREVIOUS_ROUND[currentRoundKey];
+    const prevRound = prevKey ? session.rounds?.[prevKey] : null;
+    const previousRoundSummary =
+      prevRound?.winnerId != null
+        ? {
+            roundLabel: ROUND_LABELS[prevKey],
+            winnerName: COUNTRIES.find((c) => c.id === prevRound.winnerId)?.name,
+            amountPaid: prevRound.auction?.amountPaid ?? 0,
+            prizeText: prizes[prevKey],
+          }
+        : null;
+    content = (
+      <AuctionIntroPhase
+        round={round}
+        countries={session.countries}
+        roundKey={currentRoundKey}
+        roundLabel={roundLabel}
+        previousRoundSummary={previousRoundSummary}
+      />
+    );
   } else if (roundPhase === "auction") {
     content = (
       <AuctionPhase
@@ -83,19 +107,19 @@ export default function TelaoPage() {
         roundKey={currentRoundKey}
         roundLabel={roundLabel}
         offset={offset}
-        isFinalRound={isFinalRound}
+        prizeText={prizes[currentRoundKey]}
       />
     );
   } else if (roundPhase === "result") {
-    content = <ResultPhase round={round} roundKey={currentRoundKey} roundLabel={roundLabel} />;
+    content = <ResultPhase round={round} roundLabel={roundLabel} prizeText={prizes[currentRoundKey]} />;
   } else if (roundPhase === "inflation") {
-    content = <InflationPhase round={round} countries={session.countries} roundLabel={roundLabel} />;
-  } else if (roundPhase === "ranking" && currentRoundKey === "r2") {
-    // Suspense proposital: não mostramos o ranking da Rodada 2, só o anúncio
+    content = <InflationPhase round={round} roundLabel={roundLabel} />;
+  } else if (roundPhase === "ranking" && currentRoundKey === "r3") {
+    // Suspense proposital: não mostramos o ranking da Rodada 3, só o anúncio
     // dos finalistas em seguida — ninguém sabe quem está rico até a final.
     content = (
       <div style={{ textAlign: "center" }}>
-        <h2>Rodada 2 encerrada!</h2>
+        <h2>Rodada 3 encerrada!</h2>
         <p style={{ fontSize: "1.2rem" }}>Os saldos continuam em segredo... apurando os finalistas.</p>
       </div>
     );
