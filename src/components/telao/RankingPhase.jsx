@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { COUNTRIES } from "../../config/gameConfig";
-import CountUpNumber from "../shared/CountUpNumber.jsx";
 
 export default function RankingPhase({ round, countries, ranking, roundKey, roundLabel }) {
   const before = round?.balancesBeforeRanking || {};
@@ -11,6 +10,9 @@ export default function RankingPhase({ round, countries, ranking, roundKey, roun
   const finalOrder = ranking && ranking.length === 6 ? ranking : preOrder;
 
   const [order, setOrder] = useState(preOrder);
+  const sabotage = round?.sabotage;
+  const attacker = sabotage && COUNTRIES.find((c) => c.id === sabotage.attackerId);
+  const target = sabotage && COUNTRIES.find((c) => c.id === sabotage.targetId);
 
   useEffect(() => {
     setOrder(preOrder);
@@ -24,10 +26,32 @@ export default function RankingPhase({ round, countries, ranking, roundKey, roun
       <div className="section-title" style={{ textAlign: "center" }}>
         {roundLabel} — Ranking
       </div>
+      <p style={{ textAlign: "center", fontSize: "0.85rem" }}>
+        Quem sobe, quem desce — os saldos continuam em segredo até o fim do jogo.
+      </p>
+
+      {sabotage && (
+        <motion.div
+          className="card"
+          initial={{ scale: 0.6, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 140 }}
+          style={{ textAlign: "center", marginBottom: 20, borderColor: "var(--negative)" }}
+        >
+          <div style={{ fontSize: "2.4rem" }}>
+            {attacker?.flag} ⚔️ {target?.flag}
+          </div>
+          <h3 style={{ color: "var(--negative)" }}>Sabotagem de PIB!</h3>
+          <p>
+            {attacker?.name} atacou {target?.name}, cortando 30% do PIB desta rodada.
+          </p>
+        </motion.div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {order.map((id, idx) => {
           const c = COUNTRIES.find((x) => x.id === id);
-          const cardRevealed = countries?.[id]?.history?.[roundKey]?.cardRevealed;
+          const cardsRevealed = countries?.[id]?.history?.[roundKey]?.cardsRevealed || [];
           return (
             <motion.div
               key={id}
@@ -42,17 +66,11 @@ export default function RankingPhase({ round, countries, ranking, roundKey, roun
                 <span>{c.name}</span>
               </div>
               <div style={{ textAlign: "right" }}>
-                <CountUpNumber
-                  value={countries?.[id]?.balance ?? 0}
-                  initialValue={before[id] ?? 0}
-                  className="money positive"
-                  duration={1000}
-                />
-                {cardRevealed && (
-                  <div style={{ fontSize: "0.75rem", color: "var(--accent)" }}>
-                    {cardRevealed.name}: {cardRevealed.effectText}
+                {cardsRevealed.map((cr, i) => (
+                  <div key={i} style={{ fontSize: "0.75rem", color: "var(--accent)" }}>
+                    {cr.name}: {cr.effectText}
                   </div>
-                )}
+                ))}
               </div>
             </motion.div>
           );

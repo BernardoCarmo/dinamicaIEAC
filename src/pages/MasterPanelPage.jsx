@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFirebaseValue } from "../hooks/useFirebaseValue";
 import { useServerTimeOffset } from "../hooks/useServerTimeOffset";
 import { COUNTRIES, PRIZES, ROUND_LABELS, FINAL_AUCTION_SILENCE_SEC } from "../config/gameConfig";
 import {
   drawCountries,
+  finishCardDeal,
   revealEvent,
   creditGdp,
   askCardQuestion,
@@ -15,7 +16,6 @@ import {
   revealRanking,
   advanceToRound2,
   computeFinalistsAction,
-  manuallyPickFinalists,
   startFinal,
   endGame,
   resetGame,
@@ -29,7 +29,6 @@ export default function MasterPanelPage() {
   const navigate = useNavigate();
   const [session] = useFirebaseValue("session");
   const offset = useServerTimeOffset();
-  const [manualPicks, setManualPicks] = useState([]);
 
   useEffect(() => {
     if (sessionStorage.getItem("isMestre") !== "true") {
@@ -65,7 +64,10 @@ export default function MasterPanelPage() {
   const leaderCount = session ? Object.keys(session.leaders || {}).length : 0;
 
   const eligibleCardCountries = useMemo(
-    () => COUNTRIES.filter((c) => !session?.countries?.[c.id]?.cardUsed),
+    () =>
+      COUNTRIES.filter((c) =>
+        c.cards.some((card) => !session?.countries?.[c.id]?.cardsUsed?.[card.id])
+      ),
     [session]
   );
 
@@ -80,31 +82,11 @@ export default function MasterPanelPage() {
   async function handleReset() {
     if (window.confirm("Tem certeza? Isso apaga todo o progresso da partida atual.")) {
       await resetGame();
-      setManualPicks([]);
     }
   }
 
   function openTelao() {
     window.open("#/telao", "_blank");
-  }
-
-  async function handleManualConfirm() {
-    const fixed = session.finalists && session.finalists.length === 1 ? session.finalists : [];
-    const finalIds = [...fixed, ...manualPicks].slice(0, 2);
-    if (finalIds.length === 2) {
-      await manuallyPickFinalists(finalIds);
-      setManualPicks([]);
-    }
-  }
-
-  function toggleManualPick(id) {
-    setManualPicks((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      const fixed = session.finalists && session.finalists.length === 1 ? 1 : 0;
-      const room = 2 - fixed;
-      if (prev.length >= room) return [...prev.slice(1), id];
-      return [...prev, id];
-    });
   }
 
   return (
@@ -123,19 +105,21 @@ export default function MasterPanelPage() {
         </div>
 
         <div className="card" style={{ marginBottom: 16 }}>
-          <div className="section-title">Saldos ao vivo</div>
+          <div className="section-title">Saldos ao vivo (só você vê os valores)</div>
           <div className="grid-countries">
-            {COUNTRIES.map((c) => (
-              <div key={c.id} className="card" style={{ padding: 14 }}>
-                <FlagBadge country={c} />
-                <div style={{ marginTop: 10, fontSize: "1.4rem" }}>
-                  <CountUpNumber value={session.countries?.[c.id]?.balance ?? 0} className="money positive" />
+            {COUNTRIES.map((c) => {
+              const cardsUsed = session.countries?.[c.id]?.cardsUsed || {};
+              const anyCardUsed = c.cards.some((card) => cardsUsed[card.id]);
+              return (
+                <div key={c.id} className="card" style={{ padding: 14 }}>
+                  <FlagBadge country={c} />
+                  <div style={{ marginTop: 10, fontSize: "1.4rem" }}>
+                    <CountUpNumber value={session.countries?.[c.id]?.balance ?? 0} className="money positive" />
+                  </div>
+                  {anyCardUsed && <div style={{ fontSize: "0.75rem", color: "var(--accent)" }}>carta usada</div>}
                 </div>
-                {session.countries?.[c.id]?.cardUsed && (
-                  <div style={{ fontSize: "0.75rem", color: "var(--accent)" }}>carta usada</div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -154,6 +138,15 @@ export default function MasterPanelPage() {
             <div className="section-title">
               {ROUND_LABELS[currentRoundKey]} — fase: {roundPhase}
             </div>
+
+            {roundPhase === "cardDeal" && (
+              <div>
+                <p>Telão está mostrando a animação de distribuição das cartas especiais.</p>
+                <button className="btn btn-primary" onClick={finishCardDeal}>
+                  Continuar para a Rodada 1
+                </button>
+              </div>
+            )}
 
             {roundPhase === "idle" && !isFinalRound && (
               <button className="btn btn-primary" onClick={() => revealEvent(currentRoundKey)}>
@@ -176,6 +169,18 @@ export default function MasterPanelPage() {
               <div>
                 <h3>{round.event.name}</h3>
                 <p>{round.event.description}</p>
+                <button className="btn btn-primary" onClick={() => askCardQuestion(currentRoundKey)}>
+                  Perguntar sobre cartas
+                </button>
+              </div>
+            )}
+
+            {roundPhase === "cardQuestion" && (
+              <div>
+                <p>
+                  Respostas: {Object.keys(round?.cardQuestion?.responses || {}).length}/
+                  {eligibleCardCountries.length} países com carta disponível
+                </p>
                 <button className="btn btn-primary" onClick={() => creditGdp(currentRoundKey)}>
                   Creditar PIB
                 </button>
@@ -192,18 +197,6 @@ export default function MasterPanelPage() {
                     </div>
                   ))}
                 </div>
-                <button className="btn btn-primary" onClick={() => askCardQuestion(currentRoundKey)}>
-                  Perguntar sobre cartas
-                </button>
-              </div>
-            )}
-
-            {roundPhase === "cardQuestion" && (
-              <div>
-                <p>
-                  Respostas: {Object.keys(round?.cardQuestion?.responses || {}).length}/
-                  {eligibleCardCountries.length} países com carta disponível
-                </p>
                 <div style={{ display: "flex", gap: 10 }}>
                   {!auction?.prizeRevealed && (
                     <button className="btn" onClick={() => revealPrize(currentRoundKey)}>
@@ -265,6 +258,10 @@ export default function MasterPanelPage() {
 
             {roundPhase === "ranking" && (
               <div>
+                <p style={{ fontSize: "0.85rem", opacity: 0.7 }}>
+                  (Só você vê os valores abaixo — no telão da turma o ranking aparece sem saldo, e a Rodada 2 nem
+                  mostra o ranking, pra manter o suspense até a final.)
+                </p>
                 <ol>
                   {(session.ranking || []).map((id) => {
                     const c = COUNTRIES.find((x) => x.id === id);
@@ -295,51 +292,13 @@ export default function MasterPanelPage() {
 
             {roundPhase === "finalistPick" && (
               <div>
-                {!session.finalistsNeedsManualPick ? (
-                  <div>
-                    <p>
-                      Finalistas: {session.finalists?.map((id) => COUNTRIES.find((c) => c.id === id)?.name).join(" x ")}
-                    </p>
-                    <button className="btn btn-primary" onClick={startFinal}>
-                      Iniciar Final
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <p>
-                      Empate ou dados insuficientes para apurar automaticamente. Escolha manualmente
-                      {session.finalists?.length === 1
-                        ? ` o 2º finalista (o 1º já é ${COUNTRIES.find((c) => c.id === session.finalists[0])?.name}):`
-                        : " os 2 finalistas:"}
-                    </p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {(session.finalistCandidates || []).map((id) => {
-                        const c = COUNTRIES.find((x) => x.id === id);
-                        const selected = manualPicks.includes(id);
-                        return (
-                          <button
-                            key={id}
-                            className="btn"
-                            style={{ background: selected ? "var(--accent-strong)" : undefined }}
-                            onClick={() => toggleManualPick(id)}
-                          >
-                            {c.flag} {c.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <button
-                      className="btn btn-primary"
-                      style={{ marginTop: 10 }}
-                      disabled={
-                        manualPicks.length + (session.finalists?.length === 1 ? 1 : 0) !== 2
-                      }
-                      onClick={handleManualConfirm}
-                    >
-                      Confirmar finalistas
-                    </button>
-                  </div>
-                )}
+                <p>
+                  Finalistas (apurados automaticamente): {" "}
+                  {session.finalists?.map((id) => COUNTRIES.find((c) => c.id === id)?.name).join(" x ")}
+                </p>
+                <button className="btn btn-primary" onClick={startFinal}>
+                  Iniciar Final
+                </button>
               </div>
             )}
           </div>

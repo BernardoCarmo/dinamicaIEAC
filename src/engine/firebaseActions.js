@@ -10,6 +10,7 @@ import {
   INFLATION_RATES,
   MIN_BID_INCREMENT,
   AUCTION_DURATION_SEC,
+  SABOTAGE_COST_PERCENT,
 } from "../config/gameConfig";
 import {
   drawCountryAssignment,
@@ -29,14 +30,22 @@ function sessionRef(...segments) {
   return ref(db, [SESSION_PATH, ...segments].join("/"));
 }
 
+function countryConfig(countryId) {
+  return COUNTRIES.find((c) => c.id === countryId);
+}
+
+function findCard(countryId, cardId) {
+  return countryConfig(countryId)?.cards.find((card) => card.id === cardId) ?? null;
+}
+
 function initialCountriesState() {
   const state = {};
   for (const c of COUNTRIES) {
     state[c.id] = {
       balance: c.treasuryInitial,
-      cardUsed: false,
-      cardUsedInRound: null,
-      history: [],
+      cardsUsed: {},
+      cardsUsedInRound: {},
+      history: {},
     };
   }
   return state;
@@ -52,8 +61,6 @@ function defaultSession() {
     countries: initialCountriesState(),
     rounds: {},
     finalists: null,
-    finalistsNeedsManualPick: false,
-    finalistCandidates: [],
     champion: null,
     wealthChampion: null,
     ranking: null,
@@ -85,6 +92,9 @@ export async function leaderStillExists(leaderId) {
 }
 
 // --- Sorteio inicial de países -------------------------------------------
+// Depois do sorteio, o telão passa por uma fase cosmética de "sorteio das
+// cartas" (todo mundo já tem carta fixa por faixa, mas isso cria suspense
+// antes da rodada 1 começar de verdade).
 export async function drawCountries() {
   const snap = await get(sessionRef("leaders"));
   const leaders = snap.val() || {};
@@ -94,16 +104,66 @@ export async function drawCountries() {
     assignment,
     phase: "playing",
     currentRoundKey: "r1",
-    roundPhase: "idle",
+    roundPhase: "cardDeal",
   });
 }
 
+export async function finishCardDeal() {
+  await update(sessionRef(), { roundPhase: "idle" });
+}
+
 // --- Ciclo da rodada ----------------------------------------------------------
+// Ordem: evento -> pergunta sobre cartas -> crédito de PIB -> leilão -> resultado
+// -> inflação -> ranking. As cartas vêm antes do PIB para que a Sabotagem de
+// PIB (se usada) já afete o PIB creditado nesta mesma rodada.
 export async function revealEvent(roundKey) {
   const event = drawEvent();
   await update(sessionRef(), { currentRoundKey: roundKey, roundPhase: "event" });
   await set(sessionRef("rounds", roundKey, "event"), event);
   return event;
+}
+
+export async function askCardQuestion(roundKey) {
+  await update(sessionRef(), { roundPhase: "cardQuestion" });
+  await set(sessionRef("rounds", roundKey, "cardQuestion"), { active: true, responses: {} });
+}
+
+export async function leaderDecideCard(roundKey, countryId, cardId, useCard) {
+  await set(
+    sessionRef("rounds", roundKey, "cardQuestion", "responses", countryId, cardId),
+    useCard
+  );
+  if (!useCard) return;
+
+  const card = findCard(countryId, cardId);
+  const updates = {
+    [`countries/${countryId}/cardsUsed/${cardId}`]: true,
+    [`countries/${countryId}/cardsUsedInRound/${cardId}`]: roundKey,
+  };
+
+  if (card.effectType === "flat_bonus") {
+    const balSnap = await get(sessionRef("countries", countryId, "balance"));
+    const current = balSnap.val() ?? 0;
+    updates[`countries/${countryId}/balance`] = current + card.effectValue;
+  }
+
+  await update(sessionRef(), updates);
+}
+
+// Carta de Sabotagem de PIB: exige escolher um alvo, tem custo imediato e
+// reduz o PIB que o alvo vai receber nesta rodada (aplicado em creditGdp).
+export async function useSabotageCard(roundKey, attackerCountryId, targetCountryId, cardId) {
+  const balSnap = await get(sessionRef("countries", attackerCountryId, "balance"));
+  const balance = balSnap.val() ?? 0;
+  const cost = Math.round(balance * SABOTAGE_COST_PERCENT);
+
+  await update(sessionRef(), {
+    [`countries/${attackerCountryId}/balance`]: balance - cost,
+    [`countries/${attackerCountryId}/cardsUsed/${cardId}`]: true,
+    [`countries/${attackerCountryId}/cardsUsedInRound/${cardId}`]: roundKey,
+    [`rounds/${roundKey}/sabotage`]: { attackerId: attackerCountryId, targetId: targetCountryId, cost },
+    [`rounds/${roundKey}/cardQuestion/responses/${attackerCountryId}/${cardId}`]: true,
+  });
 }
 
 export async function creditGdp(roundKey) {
@@ -121,6 +181,7 @@ export async function creditGdp(roundKey) {
     event: round.event,
     finalists,
     confront: round.confront,
+    sabotage: round.sabotage || null,
   });
 
   const balancesBefore = {};
@@ -135,21 +196,6 @@ export async function creditGdp(roundKey) {
   updates.roundPhase = "gdp";
 
   await update(sessionRef(), updates);
-}
-
-export async function askCardQuestion(roundKey) {
-  await update(sessionRef(), { roundPhase: "cardQuestion" });
-  await set(sessionRef("rounds", roundKey, "cardQuestion"), { active: true, responses: {} });
-}
-
-export async function leaderDecideCard(roundKey, countryId, useCard) {
-  await set(sessionRef("rounds", roundKey, "cardQuestion", "responses", countryId), useCard);
-  if (useCard) {
-    await update(sessionRef("countries", countryId), {
-      cardUsed: true,
-      cardUsedInRound: roundKey,
-    });
-  }
 }
 
 export async function startAuction(roundKey, serverTimeOffset = 0) {
@@ -173,15 +219,21 @@ export async function revealPrize(roundKey) {
 }
 
 export async function placeBid(roundKey, countryId, amount, serverTimeOffset = 0) {
-  const auctionSnap = await get(sessionRef("rounds", roundKey, "auction"));
+  const [auctionSnap, balanceSnap] = await Promise.all([
+    get(sessionRef("rounds", roundKey, "auction")),
+    get(sessionRef("countries", countryId, "balance")),
+  ]);
   const auction = auctionSnap.val() || {};
+  const balance = balanceSnap.val() ?? 0;
   const bids = auction.bids ? Object.values(auction.bids) : [];
   const highest = bids.reduce((max, b) => Math.max(max, b.amount), 0);
+  const minNext = highest + MIN_BID_INCREMENT;
 
-  if (amount < highest + MIN_BID_INCREMENT) {
-    throw new Error(
-      `O lance precisa ser de pelo menos ${highest + MIN_BID_INCREMENT} moedas.`
-    );
+  if (amount < minNext) {
+    throw new Error(`O lance precisa ser de pelo menos ${minNext} moedas.`);
+  }
+  if (amount > balance) {
+    throw new Error(`Você não pode apostar mais do que seu saldo atual (${balance} moedas).`);
   }
 
   const now = Date.now() + serverTimeOffset;
@@ -235,9 +287,12 @@ export async function applyInflation(roundKey) {
   const balances = {};
   for (const c of COUNTRIES) balances[c.id] = countries[c.id]?.balance ?? 0;
 
-  const cardExemptCountryIds = COUNTRIES.filter(
-    (c) =>
-      countries[c.id]?.cardUsedInRound === roundKey && c.card.effectType === "zero_inflation"
+  const cardExemptCountryIds = COUNTRIES.filter((c) =>
+    c.cards.some(
+      (card) =>
+        countries[c.id]?.cardsUsedInRound?.[card.id] === roundKey &&
+        card.effectType === "zero_inflation"
+    )
   ).map((c) => c.id);
 
   const { effectiveRate, newBalances } = computeInflation({
@@ -265,6 +320,7 @@ export async function revealRanking(roundKey) {
   ]);
   const countries = countriesSnap.val() || {};
   const round = roundSnap.val() || {};
+  const sabotage = round.sabotage || null;
 
   const updates = { roundPhase: "ranking" };
   const finalBalances = {};
@@ -273,37 +329,35 @@ export async function revealRanking(roundKey) {
   for (const c of COUNTRIES) {
     const state = countries[c.id] || {};
     balancesBeforeRanking[c.id] = state.balance ?? 0;
-    let balance = state.balance ?? 0;
-    let cardRevealed = null;
-
-    if (state.cardUsedInRound === roundKey && c.card.effectType === "flat_bonus") {
-      balance += c.card.effectValue;
-      cardRevealed = {
-        name: c.card.name,
-        narrative: c.card.narrative,
-        effectText: c.card.effectText,
-      };
-      updates[`countries/${c.id}/balance`] = balance;
-    } else if (state.cardUsedInRound === roundKey && c.card.effectType === "zero_inflation") {
-      cardRevealed = {
-        name: c.card.name,
-        narrative: c.card.narrative,
-        effectText: c.card.effectText,
-      };
-    }
-
+    const balance = state.balance ?? 0;
     finalBalances[c.id] = balance;
+
+    const cardsRevealed = [];
+    for (const card of c.cards) {
+      if (state.cardsUsedInRound?.[card.id] === roundKey) {
+        cardsRevealed.push({ name: card.name, narrative: card.narrative, effectText: card.effectText });
+      }
+    }
+    if (sabotage?.targetId === c.id) {
+      const attackerName = countryConfig(sabotage.attackerId)?.name ?? "um país rival";
+      cardsRevealed.push({
+        name: "Sabotagem de PIB sofrida",
+        narrative: `${attackerName} sabotou seu país nesta rodada.`,
+        effectText: "Seu PIB desta rodada foi cortado em 30%.",
+      });
+    }
 
     const historyEntry = {
       roundKey,
       eventName: round.event?.name ?? null,
       gdpCredited: round.gdpAmounts?.[c.id] ?? 0,
-      auctionParticipated: !!(round.auction?.bids &&
-        Object.values(round.auction.bids).some((b) => b.countryId === c.id)),
+      auctionParticipated: !!(
+        round.auction?.bids && Object.values(round.auction.bids).some((b) => b.countryId === c.id)
+      ),
       auctionWon: round.auction?.winnerId === c.id,
       amountPaid: round.auction?.winnerId === c.id ? round.auction.amountPaid : 0,
       inflationRate: round.inflationRate ?? 0,
-      cardRevealed,
+      cardsRevealed,
       balanceAfter: balance,
     };
     updates[`countries/${c.id}/history/${roundKey}`] = historyEntry;
@@ -319,23 +373,22 @@ export async function advanceToRound2() {
   await update(sessionRef(), { currentRoundKey: "r2", roundPhase: "idle" });
 }
 
+// Sempre resolve os 2 finalistas automaticamente (ver critério de desempate em
+// cascata em gameEngine.computeFinalists) — o mestre nunca precisa escolher.
 export async function computeFinalistsAction() {
-  const roundsSnap = await get(sessionRef("rounds"));
+  const [roundsSnap, countriesSnap] = await Promise.all([
+    get(sessionRef("rounds")),
+    get(sessionRef("countries")),
+  ]);
   const rounds = roundsSnap.val() || {};
-  const { finalists, needsManualPick, candidates } = computeFinalists(rounds);
-  await update(sessionRef(), {
-    finalists: finalists.length ? finalists : null,
-    finalistsNeedsManualPick: needsManualPick,
-    finalistCandidates: candidates,
-    roundPhase: "finalistPick",
-  });
-}
+  const countries = countriesSnap.val() || {};
+  const balances = {};
+  for (const c of COUNTRIES) balances[c.id] = countries[c.id]?.balance ?? 0;
 
-export async function manuallyPickFinalists(countryIds) {
+  const { finalists } = computeFinalists(rounds, balances);
   await update(sessionRef(), {
-    finalists: countryIds,
-    finalistsNeedsManualPick: false,
-    finalistCandidates: [],
+    finalists,
+    roundPhase: "finalistPick",
   });
 }
 
@@ -364,13 +417,4 @@ export async function endGame() {
     wealthChampion: computeWealthChampion(balances),
     finalRanking: computeRanking(balances),
   });
-}
-
-// Usado por um watcher (setInterval) no painel do mestre para incrementar um
-// contador atômico de "quem apostou mais" não é necessário: os totais são
-// recalculados sob demanda em computeFinalists() a partir dos lances brutos.
-export async function bidsHighest(roundKey) {
-  const snap = await get(sessionRef("rounds", roundKey, "auction", "bids"));
-  const bids = snap.val() ? Object.values(snap.val()) : [];
-  return bids.reduce((max, b) => Math.max(max, b.amount), 0);
 }

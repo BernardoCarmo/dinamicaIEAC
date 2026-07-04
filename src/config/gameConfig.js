@@ -15,12 +15,66 @@ export const TIER_ORDER = { pequeno: 0, medio: 1, grande: 2 };
 
 // Bônus de porte fixo aplicado ao PIB de cada rodada normal (rodada 1 e 2).
 // Não se aplica na rodada final (lá entra a variável de confronto).
-export const TIER_BONUS = { grande: 0, medio: 0.15, pequeno: 0.3 };
+// Valores pensados para reduzir a distância entre portes (ver README).
+export const TIER_BONUS = { grande: 0, medio: 0.2, pequeno: 0.45 };
+
+// Custo (% do saldo atual do atacante) e efeito (% de corte no PIB do alvo)
+// da carta de Sabotagem de PIB.
+export const SABOTAGE_COST_PERCENT = 0.15;
+export const SABOTAGE_GDP_CUT_PERCENT = 0.3;
+
+// --- Definições de cartas especiais -----------------------------------------
+// effectType: "zero_inflation" | "flat_bonus" | "sabotage_gdp"
+const CARD_ZERO_INFLATION = {
+  id: "porto_seguro_cambial",
+  name: "Porto Seguro Cambial",
+  effectType: "zero_inflation",
+  effectText: "A inflação da rodada em que for usada é zerada e não afeta seu país.",
+  narrative: "Em tempos de instabilidade, investidores buscam refúgio na sua moeda forte, que se valoriza.",
+};
+
+const CARD_MEDIO_BONUS = {
+  id: "investimento_estrangeiro",
+  name: "Investimento Estrangeiro Direto",
+  effectType: "flat_bonus",
+  effectValue: 500,
+  effectText: "+500 moedas ao tesouro",
+  narrative: "Uma multinacional decide investir no seu país.",
+};
+
+const CARD_PEQUENO_BONUS_1300 = {
+  id: "pacote_ajuda",
+  name: "Pacote de Ajuda Internacional",
+  effectType: "flat_bonus",
+  effectValue: 1300,
+  effectText: "+1.300 moedas ao tesouro",
+  narrative: "Seu país recebe um empréstimo emergencial de um organismo internacional.",
+};
+
+const CARD_PEQUENO_BONUS_900 = {
+  id: "reserva_emergencia",
+  name: "Reserva de Emergência",
+  effectType: "flat_bonus",
+  effectValue: 900,
+  effectText: "+900 moedas ao tesouro",
+  narrative: "Um fundo soberano libera uma reserva guardada para momentos difíceis.",
+};
+
+const CARD_SABOTAGE = {
+  id: "sabotagem_pib",
+  name: "Sabotagem de PIB",
+  effectType: "sabotage_gdp",
+  effectText: `Paga ${Math.round(SABOTAGE_COST_PERCENT * 100)}% do seu saldo atual para cortar ${Math.round(
+    SABOTAGE_GDP_CUT_PERCENT * 100
+  )}% do PIB que o país-alvo vai receber nesta rodada.`,
+  narrative: "Uma operação de espionagem econômica sabota a produção de um país rival.",
+};
 
 // Os 6 países pré-configurados. Troque nome/bandeira/tags pelos países reais
 // da sua turma antes da aula. "tier" deve ser "grande", "medio" ou "pequeno"
 // (2 de cada). "themeTags" define quem é afetado por quais eventos aleatórios
-// (seção 9): por exemplo, tags "commodities" e "guerra".
+// (seção 9): por exemplo, tags "commodities" e "guerra". "cards" é uma lista
+// (a maioria dos países tem 1 carta; um país pequeno tem 2, ver README).
 export const COUNTRIES = [
   {
     id: "c1",
@@ -30,14 +84,7 @@ export const COUNTRIES = [
     treasuryInitial: 3000,
     gdpBase: 300,
     themeTags: [],
-    card: {
-      id: "porto_seguro_cambial",
-      name: "Porto Seguro Cambial",
-      effectType: "zero_inflation",
-      effectText: "A inflação da rodada em que for usada é zerada e não afeta seu país.",
-      narrative:
-        "Em tempos de instabilidade, investidores buscam refúgio na sua moeda forte, que se valoriza.",
-    },
+    cards: [CARD_ZERO_INFLATION],
   },
   {
     id: "c2",
@@ -47,82 +94,47 @@ export const COUNTRIES = [
     treasuryInitial: 3000,
     gdpBase: 300,
     themeTags: [],
-    card: {
-      id: "porto_seguro_cambial",
-      name: "Porto Seguro Cambial",
-      effectType: "zero_inflation",
-      effectText: "A inflação da rodada em que for usada é zerada e não afeta seu país.",
-      narrative:
-        "Em tempos de instabilidade, investidores buscam refúgio na sua moeda forte, que se valoriza.",
-    },
+    cards: [CARD_ZERO_INFLATION],
   },
   {
     id: "c3",
     name: "Brasil",
     flag: "🇧🇷",
     tier: "medio",
-    treasuryInitial: 2000,
+    treasuryInitial: 2200,
     gdpBase: 200,
     themeTags: ["commodities"],
-    card: {
-      id: "investimento_estrangeiro",
-      name: "Investimento Estrangeiro Direto",
-      effectType: "flat_bonus",
-      effectValue: 1000,
-      effectText: "+1.000 moedas ao tesouro",
-      narrative: "Uma multinacional decide investir pesado no seu país.",
-    },
+    cards: [CARD_MEDIO_BONUS],
   },
   {
     id: "c4",
     name: "Alemanha",
     flag: "🇩🇪",
     tier: "medio",
-    treasuryInitial: 2000,
+    treasuryInitial: 2200,
     gdpBase: 200,
     themeTags: [],
-    card: {
-      id: "investimento_estrangeiro",
-      name: "Investimento Estrangeiro Direto",
-      effectType: "flat_bonus",
-      effectValue: 1000,
-      effectText: "+1.000 moedas ao tesouro",
-      narrative: "Uma multinacional decide investir pesado no seu país.",
-    },
+    cards: [CARD_MEDIO_BONUS],
   },
   {
     id: "c5",
     name: "Portugal",
     flag: "🇵🇹",
     tier: "pequeno",
-    treasuryInitial: 1000,
+    treasuryInitial: 1600,
     gdpBase: 100,
     themeTags: [],
-    card: {
-      id: "pacote_ajuda",
-      name: "Pacote de Ajuda Internacional",
-      effectType: "flat_bonus",
-      effectValue: 1700,
-      effectText: "+1.700 moedas ao tesouro",
-      narrative: "Seu país recebe um empréstimo emergencial de um organismo internacional.",
-    },
+    cards: [CARD_PEQUENO_BONUS_1300],
   },
   {
     id: "c6",
     name: "Chile",
     flag: "🇨🇱",
     tier: "pequeno",
-    treasuryInitial: 1000,
+    treasuryInitial: 1600,
     gdpBase: 100,
     themeTags: ["commodities"],
-    card: {
-      id: "pacote_ajuda",
-      name: "Pacote de Ajuda Internacional",
-      effectType: "flat_bonus",
-      effectValue: 1700,
-      effectText: "+1.700 moedas ao tesouro",
-      narrative: "Seu país recebe um empréstimo emergencial de um organismo internacional.",
-    },
+    cards: [CARD_PEQUENO_BONUS_900, CARD_SABOTAGE],
   },
 ];
 

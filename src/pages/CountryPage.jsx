@@ -10,13 +10,11 @@ import {
   ROUND_LABELS,
   FINAL_AUCTION_SILENCE_SEC,
 } from "../config/gameConfig";
-import { leaderDecideCard, placeBid } from "../engine/firebaseActions";
+import { leaderDecideCard, useSabotageCard, placeBid } from "../engine/firebaseActions";
 import CountUpNumber from "../components/shared/CountUpNumber.jsx";
 import FlagBadge from "../components/shared/FlagBadge.jsx";
 import Countdown from "../components/shared/Countdown.jsx";
 import BidList from "../components/shared/BidList.jsx";
-
-const CARD_ELIGIBLE_PHASES = ["idle", "event", "gdp", "cardQuestion"];
 
 export default function CountryPage() {
   const navigate = useNavigate();
@@ -25,6 +23,7 @@ export default function CountryPage() {
   const offset = useServerTimeOffset();
   const [bidAmount, setBidAmount] = useState(0);
   const [bidError, setBidError] = useState("");
+  const [sabotageTarget, setSabotageTarget] = useState(null);
 
   const countryId = useMemo(() => {
     const assignment = session?.assignment || {};
@@ -81,24 +80,34 @@ export default function CountryPage() {
     statusLabel = "Classificado para a final";
   }
 
-  const cardUsed = countryState.cardUsed;
-  const canDecideCardNow =
-    !cardUsed && currentRoundKey && CARD_ELIGIBLE_PHASES.includes(roundPhase);
-  const alreadyResponded = round?.cardQuestion?.responses?.[countryId] !== undefined;
-  const cardQuestionActive = round?.cardQuestion?.active && !alreadyResponded && canDecideCardNow;
+  const cardQuestionOpen = roundPhase === "cardQuestion" && round?.cardQuestion?.active;
+  const balance = countryState.balance ?? 0;
 
   const inAuctionPhase = roundPhase === "auction" && auction?.active;
   const eligibleForThisAuction = !isFinalRound || isFinalist;
+  const canAffordMinBid = balance >= minNextBid;
 
-  async function handleUseCard() {
-    if (!window.confirm(`Usar agora a carta "${countryConfig.card.name}"? Isso só pode ser feito uma vez em todo o jogo.`)) {
+  async function handleUseCard(card) {
+    if (card.effectType === "sabotage_gdp") {
+      setSabotageTarget(card.id);
       return;
     }
-    await leaderDecideCard(currentRoundKey, countryId, true);
+    if (!window.confirm(`Usar agora a carta "${card.name}"? Isso só pode ser feito uma vez em todo o jogo.`)) {
+      return;
+    }
+    await leaderDecideCard(currentRoundKey, countryId, card.id, true);
   }
 
-  async function handleDeclineCard() {
-    await leaderDecideCard(currentRoundKey, countryId, false);
+  async function handleConfirmSabotage(cardId, targetId) {
+    if (!window.confirm(`Confirmar Sabotagem de PIB contra ${COUNTRIES.find((c) => c.id === targetId)?.name}? Vai custar 15% do seu saldo atual.`)) {
+      return;
+    }
+    await useSabotageCard(currentRoundKey, countryId, targetId, cardId);
+    setSabotageTarget(null);
+  }
+
+  async function handleDeclineCard(cardId) {
+    await leaderDecideCard(currentRoundKey, countryId, cardId, false);
   }
 
   async function handleBid(e) {
@@ -121,7 +130,7 @@ export default function CountryPage() {
           <div style={{ marginTop: 14 }}>
             <div className="section-title">Saldo atual</div>
             <div style={{ fontSize: "3rem" }}>
-              <CountUpNumber value={countryState.balance} className="money positive" />
+              <CountUpNumber value={balance} className="money positive" />
             </div>
           </div>
           <div className="badge" style={{ background: "var(--bg-panel)", color: "var(--text)", marginTop: 6 }}>
@@ -129,37 +138,58 @@ export default function CountryPage() {
           </div>
         </div>
 
-        {!cardUsed && (
-          <div className="card" style={{ marginTop: 16, borderColor: cardQuestionActive ? "var(--accent)" : undefined }}>
-            <div className="section-title">Sua carta especial</div>
-            <h3>{countryConfig.card.name}</h3>
-            <p>{countryConfig.card.narrative}</p>
-            <p>
-              <strong>Efeito:</strong> {countryConfig.card.effectText}
-            </p>
-            {cardQuestionActive && (
-              <p style={{ color: "var(--accent)" }}>
-                O mestre está perguntando: usar a carta agora, antes do leilão desta rodada?
+        {countryConfig.cards.map((card) => {
+          const used = countryState.cardsUsed?.[card.id];
+          if (used) return null;
+          const alreadyResponded = round?.cardQuestion?.responses?.[countryId]?.[card.id] !== undefined;
+          const canDecideNow = cardQuestionOpen && !alreadyResponded;
+
+          return (
+            <div
+              key={card.id}
+              className="card"
+              style={{ marginTop: 16, borderColor: cardQuestionOpen ? "var(--accent)" : undefined }}
+            >
+              <div className="section-title">Sua carta especial</div>
+              <h3>{card.name}</h3>
+              <p>{card.narrative}</p>
+              <p>
+                <strong>Efeito:</strong> {card.effectText}
               </p>
-            )}
-            {canDecideCardNow && !alreadyResponded ? (
-              <div style={{ display: "flex", gap: 10 }}>
-                <button className="btn btn-primary" onClick={handleUseCard}>
-                  Usar carta agora
-                </button>
-                {round?.cardQuestion?.active && (
-                  <button className="btn" onClick={handleDeclineCard}>
+
+              {sabotageTarget === card.id ? (
+                <div>
+                  <p>Escolha o país-alvo:</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                    {COUNTRIES.filter((c) => c.id !== countryId).map((c) => (
+                      <button key={c.id} className="btn" onClick={() => handleConfirmSabotage(card.id, c.id)}>
+                        {c.flag} {c.name}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn" onClick={() => setSabotageTarget(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              ) : canDecideNow ? (
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button className="btn btn-primary" onClick={() => handleUseCard(card)}>
+                    Usar carta agora
+                  </button>
+                  <button className="btn" onClick={() => handleDeclineCard(card.id)}>
                     Não usar agora
                   </button>
-                )}
-              </div>
-            ) : (
-              <p style={{ opacity: 0.7 }}>
-                {alreadyResponded ? "Você já respondeu para esta rodada." : "Disponível antes do próximo leilão."}
-              </p>
-            )}
-          </div>
-        )}
+                </div>
+              ) : (
+                <p style={{ opacity: 0.7 }}>
+                  {alreadyResponded
+                    ? "Você já respondeu para esta rodada."
+                    : "O mestre ainda não abriu a pergunta sobre cartas desta rodada."}
+                </p>
+              )}
+            </div>
+          );
+        })}
 
         {inAuctionPhase && eligibleForThisAuction && (
           <div className="card" style={{ marginTop: 16 }}>
@@ -184,20 +214,29 @@ export default function CountryPage() {
               </p>
             )}
             <BidList bids={bids} />
-            <form onSubmit={handleBid} style={{ display: "flex", gap: 10, marginTop: 12 }}>
-              <input
-                type="number"
-                min={minNextBid}
-                step={50}
-                value={bidAmount}
-                onChange={(e) => setBidAmount(e.target.value)}
-              />
-              <button className="btn btn-primary" type="submit">
-                Dar lance
-              </button>
-            </form>
+            {canAffordMinBid ? (
+              <form onSubmit={handleBid} style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                <input
+                  type="number"
+                  min={minNextBid}
+                  max={balance}
+                  step={50}
+                  value={bidAmount}
+                  onChange={(e) => setBidAmount(e.target.value)}
+                />
+                <button className="btn btn-primary" type="submit">
+                  Dar lance
+                </button>
+              </form>
+            ) : (
+              <p style={{ color: "var(--negative)", marginTop: 12 }}>
+                Seu saldo ({balance.toLocaleString("pt-BR")}) não é suficiente para cobrir o lance mínimo
+                ({minNextBid.toLocaleString("pt-BR")}). Você não pode dar lances nesta rodada.
+              </p>
+            )}
             <p style={{ fontSize: "0.8rem", marginTop: 6 }}>
-              Lance mínimo: {minNextBid.toLocaleString("pt-BR")} moedas.
+              Lance mínimo: {minNextBid.toLocaleString("pt-BR")} moedas. Máximo: seu saldo atual (
+              {balance.toLocaleString("pt-BR")}).
             </p>
             {bidError && <p style={{ color: "var(--negative)" }}>{bidError}</p>}
           </div>
@@ -223,11 +262,11 @@ export default function CountryPage() {
                       : "não participou"}
                   </p>
                   <p style={{ margin: "4px 0" }}>Inflação aplicada: {h.inflationRate}%</p>
-                  {h.cardRevealed && (
-                    <p style={{ margin: "4px 0", color: "var(--accent)" }}>
-                      Carta usada: {h.cardRevealed.name} — {h.cardRevealed.effectText}
+                  {(h.cardsRevealed || []).map((cr, i) => (
+                    <p key={i} style={{ margin: "4px 0", color: "var(--accent)" }}>
+                      {cr.name}: {cr.effectText}
                     </p>
-                  )}
+                  ))}
                 </div>
               ))}
             </div>

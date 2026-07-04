@@ -10,7 +10,7 @@ export default function CardsPhase({ round, roundLabel }) {
       <p>Os líderes estão decidindo se usam sua carta especial antes do leilão...</p>
       <div className="grid-countries">
         {COUNTRIES.map((c) => {
-          const used = responses[c.id] === true;
+          const used = Object.values(responses[c.id] || {}).some((v) => v === true);
           return (
             <div key={c.id} className="card" style={{ position: "relative" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

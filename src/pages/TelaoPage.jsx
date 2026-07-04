@@ -10,6 +10,7 @@ import InflationPhase from "../components/telao/InflationPhase.jsx";
 import RankingPhase from "../components/telao/RankingPhase.jsx";
 import VsScreen from "../components/telao/VsScreen.jsx";
 import ClosingScreen from "../components/telao/ClosingScreen.jsx";
+import CardDealPhase from "../components/telao/CardDealPhase.jsx";
 
 export default function TelaoPage() {
   const [session] = useFirebaseValue("session");
@@ -46,6 +47,8 @@ export default function TelaoPage() {
         </div>
       </div>
     );
+  } else if (session.phase === "playing" && roundPhase === "cardDeal") {
+    content = <CardDealPhase />;
   } else if (session.phase === "playing" && currentRoundKey === "r1" && roundPhase === "idle") {
     content = (
       <div style={{ textAlign: "center" }}>
@@ -87,6 +90,15 @@ export default function TelaoPage() {
     content = <ResultPhase round={round} roundKey={currentRoundKey} roundLabel={roundLabel} />;
   } else if (roundPhase === "inflation") {
     content = <InflationPhase round={round} countries={session.countries} roundLabel={roundLabel} />;
+  } else if (roundPhase === "ranking" && currentRoundKey === "r2") {
+    // Suspense proposital: não mostramos o ranking da Rodada 2, só o anúncio
+    // dos finalistas em seguida — ninguém sabe quem está rico até a final.
+    content = (
+      <div style={{ textAlign: "center" }}>
+        <h2>Rodada 2 encerrada!</h2>
+        <p style={{ fontSize: "1.2rem" }}>Os saldos continuam em segredo... apurando os finalistas.</p>
+      </div>
+    );
   } else if (roundPhase === "ranking") {
     content = (
       <RankingPhase

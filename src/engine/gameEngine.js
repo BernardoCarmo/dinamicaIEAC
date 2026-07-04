@@ -10,6 +10,7 @@ import {
   TIER_BONUS,
   TIER_ORDER,
   CONFRONT_VARIABLE,
+  SABOTAGE_GDP_CUT_PERCENT,
 } from "../config/gameConfig";
 
 function shuffle(array) {
@@ -74,7 +75,8 @@ export function computeConfrontVariable(finalistIds) {
 // event: objeto retornado por drawEvent()
 // finalists: [id, id] (apenas relevante quando roundKey === 'final')
 // confront: resultado de computeConfrontVariable (apenas na final)
-export function computeGdpForRound({ roundKey, event, finalists, confront }) {
+// sabotage: { attackerId, targetId } se alguém usou a carta de Sabotagem de PIB nesta rodada
+export function computeGdpForRound({ roundKey, event, finalists, confront, sabotage }) {
   const gdpAmounts = {};
   const isFinal = roundKey === "final";
 
@@ -94,7 +96,10 @@ export function computeGdpForRound({ roundKey, event, finalists, confront }) {
     else if (event.type === "random1" && country.id === event.randomTargetCountryId)
       eventPercent = event.gdpPercent;
 
-    const amount = country.gdpBase * (1 + structuralBonus) * (1 + eventPercent);
+    let amount = country.gdpBase * (1 + structuralBonus) * (1 + eventPercent);
+    if (sabotage?.targetId === country.id) {
+      amount *= 1 - SABOTAGE_GDP_CUT_PERCENT;
+    }
     gdpAmounts[country.id] = Math.round(amount);
   }
 
@@ -131,8 +136,13 @@ export function resolveAuction(bids) {
 }
 
 // --- Apuração dos finalistas (seção 11) --------------------------------------
+// Sempre resolve automaticamente para exatamente 2 finalistas, em cascata:
+// 1) quem venceu mais leilões pré-final; 2) em empate, quem apostou mais no
+// total (ganhando ou perdendo); 3) em novo empate, quem tem maior saldo atual;
+// 4) se ainda empatar, sorteio aleatório. Nunca exige decisão manual do mestre.
 // rounds: { r1: { winnerId, auction: { bids } }, r2: { winnerId, auction: { bids } } }
-export function computeFinalists(rounds) {
+// balances: { countryId: saldoAtual } — usado no 3º critério de desempate
+export function computeFinalists(rounds, balances = {}) {
   const w1 = rounds.r1?.winnerId ?? null;
   const w2 = rounds.r2?.winnerId ?? null;
 
@@ -146,42 +156,38 @@ export function computeFinalists(rounds) {
     }
   }
 
+  function pickBest(candidateIds) {
+    let pool = topTiedBy(candidateIds, (id) => totalBidsByCountry[id] || 0);
+    if (pool.length > 1) pool = topTiedBy(pool, (id) => balances[id] ?? 0);
+    if (pool.length > 1) pool = shuffle(pool);
+    return pool[0];
+  }
+
   if (w1 && w2 && w1 !== w2) {
-    return { finalists: [w1, w2], needsManualPick: false, candidates: [] };
+    return { finalists: [w1, w2] };
   }
 
   if (w1 && w2 && w1 === w2) {
-    const zeroWinCandidates = COUNTRIES.map((c) => c.id).filter((id) => id !== w1);
-    return pickSecondFinalistByBids(w1, zeroWinCandidates, totalBidsByCountry);
+    const candidates = COUNTRIES.map((c) => c.id).filter((id) => id !== w1);
+    return { finalists: [w1, pickBest(candidates)] };
   }
 
-  // Nenhum leilão teve vencedor em uma ou nas duas rodadas (ninguém deu lance).
-  // Regra de fallback (não coberta explicitamente nas regras): usa o único
-  // vencedor existente (se houver) como 1º finalista, e decide o resto por
-  // total apostado; se não houver nenhum vencedor, pede escolha manual.
   const singleWinner = w1 || w2;
   if (singleWinner) {
-    const zeroWinCandidates = COUNTRIES.map((c) => c.id).filter((id) => id !== singleWinner);
-    return pickSecondFinalistByBids(singleWinner, zeroWinCandidates, totalBidsByCountry);
+    const candidates = COUNTRIES.map((c) => c.id).filter((id) => id !== singleWinner);
+    return { finalists: [singleWinner, pickBest(candidates)] };
   }
 
-  const sortedByBids = [...COUNTRIES.map((c) => c.id)].sort(
-    (a, b) => (totalBidsByCountry[b] || 0) - (totalBidsByCountry[a] || 0)
-  );
-  return { finalists: [], needsManualPick: true, candidates: sortedByBids };
+  // Ninguém venceu nenhuma rodada (ninguém deu lance em nenhum leilão pré-final).
+  const allIds = COUNTRIES.map((c) => c.id);
+  const first = pickBest(allIds);
+  const second = pickBest(allIds.filter((id) => id !== first));
+  return { finalists: [first, second] };
 }
 
-function pickSecondFinalistByBids(firstFinalistId, candidates, totalBidsByCountry) {
-  const sorted = [...candidates].sort(
-    (a, b) => (totalBidsByCountry[b] || 0) - (totalBidsByCountry[a] || 0)
-  );
-  const top = totalBidsByCountry[sorted[0]] || 0;
-  const tied = sorted.filter((id) => (totalBidsByCountry[id] || 0) === top);
-
-  if (top === 0 || tied.length > 1) {
-    return { finalists: [firstFinalistId], needsManualPick: true, candidates: sorted };
-  }
-  return { finalists: [firstFinalistId, sorted[0]], needsManualPick: false, candidates: [] };
+function topTiedBy(ids, keyFn) {
+  const best = Math.max(...ids.map(keyFn));
+  return ids.filter((id) => keyFn(id) === best);
 }
 
 // --- Campeão de riqueza real --------------------------------------------------
