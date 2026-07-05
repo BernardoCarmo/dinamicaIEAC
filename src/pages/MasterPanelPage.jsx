@@ -25,6 +25,7 @@ import {
   startTutorial,
   setTutorialSlide,
   finishTutorial,
+  setAudioSettings,
 } from "../engine/firebaseActions";
 import { useRemainingMs } from "../hooks/useRemainingMs";
 import { getAuctionStage } from "../engine/gameEngine";
@@ -134,6 +135,27 @@ export default function MasterPanelPage() {
               Reiniciar jogo
             </button>
           </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <div className="section-title" style={{ margin: 0 }}>
+            🎵 Som do telão
+          </div>
+          <button
+            className="btn"
+            onClick={() => setAudioSettings({ muted: !session.audioMuted })}
+          >
+            {session.audioMuted ? "🔇 Mudo" : "🔊 Som ligado"}
+          </button>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            value={session.audioVolume ?? 0.6}
+            onChange={(e) => setAudioSettings({ volume: Number(e.target.value) })}
+            style={{ width: 160 }}
+          />
         </div>
 
         <div className="card" style={{ marginBottom: 16 }}>

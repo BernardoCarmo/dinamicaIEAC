@@ -1,5 +1,10 @@
+import { useState } from "react";
 import { useFirebaseValue } from "../hooks/useFirebaseValue";
 import { useServerTimeOffset } from "../hooks/useServerTimeOffset";
+import { useRemainingMs } from "../hooks/useRemainingMs";
+import { useGameAudio } from "../hooks/useGameAudio";
+import { resumeAudio } from "../audio/synthEngine";
+import { getAuctionStage } from "../engine/gameEngine";
 import { COUNTRIES, ROUND_LABELS } from "../config/gameConfig";
 import EventPhase from "../components/telao/EventPhase.jsx";
 import GdpPhase from "../components/telao/GdpPhase.jsx";
@@ -17,9 +22,41 @@ import { TUTORIAL_SLIDES } from "../config/tutorialSlides";
 
 const PREVIOUS_ROUND = { r2: "r1", r3: "r2", final: "r3" };
 
+// Fase da rodada -> cue de áudio (ver src/audio/cues.js).
+const ROUND_PHASE_CUES = {
+  cardDeal: "bastidores",
+  event: "event",
+  gdp: "gdp",
+  cardQuestion: "bastidores",
+  auctionIntro: "bastidores",
+  result: "result",
+  inflation: "inflation",
+  ranking: "ranking",
+  finalistPick: "bastidores",
+  vs: "vs",
+};
+
+function computeCueKey(session, remainingSec) {
+  if (!session) return "lobby";
+  if (session.phase === "ended") return "closing";
+  if (session.phase === "login") return "lobby";
+  if (session.roundPhase === "auction") {
+    return getAuctionStage(remainingSec) === "blind" ? "auctionBlind" : "auctionOpen";
+  }
+  return ROUND_PHASE_CUES[session.roundPhase] ?? "lobby";
+}
+
 export default function TelaoPage() {
   const [session] = useFirebaseValue("session");
   const offset = useServerTimeOffset();
+  const [soundUnlocked, setSoundUnlocked] = useState(false);
+
+  const currentRoundKey = session?.currentRoundKey;
+  const round = currentRoundKey ? session?.rounds?.[currentRoundKey] : null;
+  const remainingMs = useRemainingMs(round?.auction?.endsAt, offset);
+  const cueKey = computeCueKey(session, Math.ceil(remainingMs / 1000));
+
+  useGameAudio(cueKey, { muted: session?.audioMuted ?? false, volume: session?.audioVolume ?? 0.6 });
 
   if (!session) {
     return (
@@ -29,9 +66,7 @@ export default function TelaoPage() {
     );
   }
 
-  const currentRoundKey = session.currentRoundKey;
   const roundPhase = session.roundPhase;
-  const round = currentRoundKey ? session.rounds?.[currentRoundKey] : null;
   const roundLabel = currentRoundKey ? ROUND_LABELS[currentRoundKey] : "";
   const prizes = session.prizes || {};
 
@@ -160,6 +195,18 @@ export default function TelaoPage() {
 
   return (
     <div className="page" style={{ justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+      {!soundUnlocked && (
+        <button
+          className="btn btn-primary"
+          style={{ position: "fixed", top: 16, right: 16, zIndex: 10 }}
+          onClick={() => {
+            resumeAudio();
+            setSoundUnlocked(true);
+          }}
+        >
+          🔊 Ativar som
+        </button>
+      )}
       <div className="container" style={{ display: "flex", justifyContent: "center" }}>
         {content}
       </div>

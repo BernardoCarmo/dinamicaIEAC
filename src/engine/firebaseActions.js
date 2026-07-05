@@ -89,6 +89,8 @@ function defaultSession() {
     prizes: { ...PRIZES },
     tutorialSlide: null,
     tutorialCompleted: false,
+    audioMuted: false,
+    audioVolume: 0.6,
   };
 }
 
@@ -106,6 +108,14 @@ export async function resetGame() {
 // --- Prêmios (configuráveis pelo mestre) --------------------------------------
 export async function setPrizes(prizes) {
   await set(sessionRef("prizes"), prizes);
+}
+
+// --- Áudio (controlado remotamente pelo painel do mestre, tocado no telão) ---
+export async function setAudioSettings({ muted, volume }) {
+  const updates = {};
+  if (muted !== undefined) updates.audioMuted = muted;
+  if (volume !== undefined) updates.audioVolume = volume;
+  await update(sessionRef(), updates);
 }
 
 // --- Login / sala de espera --------------------------------------------------
