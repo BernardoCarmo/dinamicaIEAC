@@ -13,7 +13,7 @@ import {
   MAX_PRELIMINARY_WINS,
 } from "../config/gameConfig";
 import { leaderDecideCard, useSabotageCard, useTheftCard, placeBid } from "../engine/firebaseActions";
-import { isBidRevealed, getAuctionStage } from "../engine/gameEngine";
+import { getAuctionStage } from "../engine/gameEngine";
 import CountUpNumber from "../components/shared/CountUpNumber.jsx";
 import FlagBadge from "../components/shared/FlagBadge.jsx";
 import Countdown from "../components/shared/Countdown.jsx";
@@ -55,7 +55,6 @@ export default function CountryPage() {
   const remainingMs = useRemainingMs(auction?.endsAt, offset);
   const remainingSec = Math.ceil(remainingMs / 1000);
   const isFinalRound = currentRoundKey === "final";
-  const revealed = isBidRevealed(remainingSec);
   const stage = getAuctionStage(remainingSec);
 
   const bids = auction?.bids || {};
@@ -67,12 +66,12 @@ export default function CountryPage() {
   // revelados — senão isso vazaria o lance mais alto mesmo com os números
   // escondidos na lista.
   useEffect(() => {
-    if (stage === "newBids" && revealed) {
+    if (stage === "open") {
       setBidAmount(minNextBid);
     } else {
       setBidAmount("");
     }
-  }, [minNextBid, currentRoundKey, stage, revealed]);
+  }, [minNextBid, currentRoundKey, stage]);
 
   // Só pra re-renderizar durante o cooldown de 1s do lance.
   useEffect(() => {
@@ -240,13 +239,14 @@ export default function CountryPage() {
             )}
             <Countdown endsAt={auction.endsAt} offset={offset} onComplete={() => {}} />
 
-            {stage === "fixedBet" && (
+            {stage === "blind" && (
               <>
                 <p style={{ fontSize: "0.85rem" }}>
-                  🔒 Fase de aposta fixa: cada país pode dar 1 lance único e secreto, sem saber o dos outros.
+                  🔒 Fase às cegas: você pode dar 1 lance único e secreto a qualquer momento, sem saber o dos outros.
+                  Quem ainda não apostou pode esperar à vontade — só quem já apostou fica travado até a revelação.
                 </p>
                 {ownBidsCount > 0 ? (
-                  <p style={{ opacity: 0.7 }}>Sua aposta fixa já foi enviada. Aguarde a próxima fase.</p>
+                  <p style={{ opacity: 0.7 }}>Sua aposta às cegas já foi enviada. Aguarde a revelação dos valores.</p>
                 ) : (
                   <form onSubmit={handleBid} style={{ display: "flex", gap: 10, marginTop: 12 }}>
                     <input
@@ -259,30 +259,22 @@ export default function CountryPage() {
                       placeholder="Sua aposta"
                     />
                     <button className="btn btn-primary" type="submit" disabled={onCooldown}>
-                      {onCooldown ? "Aguarde..." : "Enviar aposta fixa"}
+                      {onCooldown ? "Aguarde..." : "Enviar aposta às cegas"}
                     </button>
                   </form>
                 )}
               </>
             )}
 
-            {stage === "locked" && (
-              <p style={{ fontSize: "0.9rem", marginTop: 10 }}>
-                🔒 Lances travados neste momento — aguarde a fase de novos lances abrir.
-              </p>
-            )}
-
-            {stage === "newBids" && (
+            {stage === "open" && (
               <>
-                <p style={{ fontSize: "0.85rem" }}>
-                  {revealed ? "Lances revelados agora!" : "Leilão às cegas: os lances estão ocultos no momento."}
-                </p>
-                <BidList bids={bids} revealed={revealed} />
+                <p style={{ fontSize: "0.85rem" }}>Valores revelados — todo mundo pode dar novos lances agora!</p>
+                <BidList bids={bids} revealed />
                 {canAffordMinBid ? (
                   <form onSubmit={handleBid} style={{ display: "flex", gap: 10, marginTop: 12 }}>
                     <input
                       type="number"
-                      min={revealed ? minNextBid : MIN_BID_INCREMENT}
+                      min={minNextBid}
                       max={balance}
                       step={50}
                       value={bidAmount}
@@ -298,10 +290,8 @@ export default function CountryPage() {
                   </p>
                 )}
                 <p style={{ fontSize: "0.8rem", marginTop: 6 }}>
-                  {revealed
-                    ? `Lance mínimo: ${minNextBid.toLocaleString("pt-BR")} moedas.`
-                    : "O valor mínimo do lance está oculto — supere o lance mais alto atual (você não sabe qual é)."}{" "}
-                  Máximo: seu saldo atual ({balance.toLocaleString("pt-BR")}).
+                  Lance mínimo: {minNextBid.toLocaleString("pt-BR")} moedas. Máximo: seu saldo atual (
+                  {balance.toLocaleString("pt-BR")}).
                 </p>
               </>
             )}

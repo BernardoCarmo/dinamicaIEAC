@@ -1,5 +1,13 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { COUNTRIES, MAX_PRELIMINARY_WINS } from "../../config/gameConfig";
+import {
+  COUNTRIES,
+  MAX_PRELIMINARY_WINS,
+  AUCTION_DURATION_SEC,
+  BLIND_PHASE_END_REMAINING_SEC,
+  MIN_BID_INCREMENT,
+  SECOND_PLACE_INFLATION_EXTRA,
+  NON_WINNER_INFLATION_EXTRA,
+} from "../../config/gameConfig";
 
 const grande = COUNTRIES.filter((c) => c.tier === "grande");
 const medio = COUNTRIES.filter((c) => c.tier === "medio");
@@ -163,9 +171,9 @@ function CardsOverview() {
 
 function CardsDetail() {
   const items = [
-    { icon: "🛡️", label: "Grande", text: "Porto Seguro Cambial — zera a inflação da rodada" },
-    { icon: "💵", label: "Médio", text: "Investimento Estrangeiro — +500 na hora" },
-    { icon: "💰", label: "Pequeno", text: "Bônus fixo (+900) + 1 carta de ataque" },
+    { icon: "🛡️", label: "Proteção", text: "Zera a inflação da rodada em que for usada" },
+    { icon: "💵", label: "Bônus", text: "Dinheiro direto no tesouro, na hora" },
+    { icon: "⚔️", label: "Ataque", text: "Mexe no PIB de outro país" },
   ];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 520, margin: "0 auto" }}>
@@ -190,14 +198,12 @@ function CardsDetail() {
 }
 
 function AttackCards() {
-  const chile = COUNTRIES.find((c) => c.id === "c6");
-  const portugal = COUNTRIES.find((c) => c.id === "c5");
   return (
     <div style={{ display: "flex", gap: 40, justifyContent: "center", flexWrap: "wrap" }}>
       <motion.div className="card" style={{ textAlign: "center" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-        <div style={{ fontSize: "2.2rem" }}>{chile.flag} ⚔️ 🇨🇳/🇺🇸</div>
+        <div style={{ fontSize: "2.2rem" }}>🎴 ⚔️ ❓</div>
         <strong>Sabotagem de PIB</strong>
-        <p>Alvo sorteado entre os grandes</p>
+        <p>Alvo sorteado ao acaso — pode ser qualquer país</p>
       </motion.div>
       <motion.div
         className="card"
@@ -206,9 +212,9 @@ function AttackCards() {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.3 }}
       >
-        <div style={{ fontSize: "2.2rem" }}>{portugal.flag} 🕵️ ❓</div>
+        <div style={{ fontSize: "2.2rem" }}>🎴 🕵️ ❓</div>
         <strong>Roubo de PIB</strong>
-        <p>Alvo escolhido pelo líder</p>
+        <p>Alvo escolhido a dedo por quem ataca</p>
       </motion.div>
     </div>
   );
@@ -235,18 +241,6 @@ function AuctionStage1() {
 }
 
 function AuctionStage2() {
-  return (
-    <motion.div
-      style={{ fontSize: "5rem", textAlign: "center" }}
-      animate={{ scale: [1, 1.15, 1], opacity: [1, 0.6, 1] }}
-      transition={{ repeat: Infinity, duration: 1.4 }}
-    >
-      🔒
-    </motion.div>
-  );
-}
-
-function AuctionStage3() {
   return (
     <div style={{ textAlign: "center" }}>
       <div style={{ fontSize: "3rem", fontWeight: 800 }}>00:14</div>
@@ -438,6 +432,49 @@ function Ready() {
   );
 }
 
+function Summary() {
+  const items = [
+    { label: "Estrutura", text: "3 rodadas normais + 1 grande final, mesmo ciclo em todas." },
+    { label: "Portes", text: "Grande / Médio / Pequeno — tesouro inicial e bônus de PIB diferentes." },
+    {
+      label: "Ciclo da rodada",
+      text: "Evento → Cartas → PIB → Bastidores → Leilão → Resultado → Inflação → Ranking.",
+    },
+    { label: "Cartas", text: "1 uso por carta, em todo o jogo, só na pergunta do mestre antes do leilão." },
+    {
+      label: "Leilão",
+      text: `${AUCTION_DURATION_SEC}s no total: às cegas até faltar ${BLIND_PHASE_END_REMAINING_SEC}s (quem aposta trava, quem não aposta nunca trava), depois revela e libera novos lances.`,
+    },
+    {
+      label: "Lances",
+      text: `mínimo +${MIN_BID_INCREMENT} moedas, nunca mais que o saldo, só quem vence paga.`,
+    },
+    { label: "Limite de vitórias", text: `no máximo ${MAX_PRELIMINARY_WINS} rodadas normais vencidas por país.` },
+    {
+      label: "Inflação",
+      text: `vencedor do leilão: sem punição extra · 2º lugar no lance: +${SECOND_PLACE_INFLATION_EXTRA}pp · demais: +${NON_WINNER_INFLATION_EXTRA}pp.`,
+    },
+    { label: "Finalistas", text: "sempre automático: vitórias → total apostado → saldo → sorteio." },
+    { label: "2 campeões", text: "Campeão da Final e Campeão de Riqueza Real." },
+  ];
+  return (
+    <div className="grid-countries" style={{ textAlign: "left" }}>
+      {items.map((it, i) => (
+        <motion.div
+          key={it.label}
+          className="card"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: i * 0.05 }}
+        >
+          <strong style={{ color: "var(--accent)" }}>{it.label}</strong>
+          <p style={{ margin: "6px 0 0", fontSize: "0.85rem" }}>{it.text}</p>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
 const VISUALS = {
   flags: FlagsRow,
   roles: Roles,
@@ -450,7 +487,6 @@ const VISUALS = {
   attack_cards: AttackCards,
   auction_stage1: AuctionStage1,
   auction_stage2: AuctionStage2,
-  auction_stage3: AuctionStage3,
   auction_rules: RuleList,
   win_cap: WinCap,
   inflation: InflationBars,
@@ -459,6 +495,7 @@ const VISUALS = {
   final_round: FinalRoundDemo,
   prizes_ending: PrizesEnding,
   ready: Ready,
+  summary: Summary,
 };
 
 export default function TutorialSlide({ slide, index, total }) {

@@ -36,9 +36,8 @@ import BidList from "../components/shared/BidList.jsx";
 import TutorialSlide from "../components/tutorial/TutorialSlide.jsx";
 
 const STAGE_LABELS = {
-  fixedBet: "Fase de aposta fixa (lance único e secreto)",
-  locked: "Travado (aguardando abrir novos lances)",
-  newBids: "Novos lances liberados",
+  blind: "Fase às cegas (lance único e secreto por país)",
+  open: "Valores revelados — novos lances liberados",
 };
 
 const PRIZE_FIELDS = [

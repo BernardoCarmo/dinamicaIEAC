@@ -239,19 +239,17 @@ export const CONFRONT_VARIABLE = {
 
 // --- Leilão -------------------------------------------------------------------
 // Todas as rodadas (1, 2, 3 e final) têm 1 minuto fixo de negociação, sem
-// prorrogação, dividido em 3 fases (mesma regra pra rodadas normais e final):
-//   1) "Aposta fixa" — enquanto restar mais que FIXED_BET_UNTIL_REMAINING_SEC:
-//      cada país pode dar 1 único lance selado (não compara com os outros).
-//   2) "Travado" — entre esse ponto e NEW_BIDS_FROM_REMAINING_SEC restantes:
-//      ninguém pode dar lance, só espera.
-//   3) "Novos lances" — a partir de NEW_BIDS_FROM_REMAINING_SEC restantes:
-//      libera lances de verdade (precisa superar o maior lance atual). Os
-//      valores em si só ficam visíveis a partir de VALUES_REVEAL_FROM_REMAINING_SEC
-//      restantes — antes disso o país só vê quem já apostou, não quanto.
+// prorrogação, com 2 fases (mesma regra pra rodadas normais e final):
+//   1) "Às cegas" — enquanto restar mais que BLIND_PHASE_END_REMAINING_SEC:
+//      cada país pode dar 1 único lance selado, a qualquer momento dessa
+//      janela. Assim que um país dá esse lance, ELE (só ele) fica travado até
+//      a revelação — quem ainda não apostou NUNCA fica travado, pode esperar
+//      à vontade.
+//   2) "Revelado" — a partir de BLIND_PHASE_END_REMAINING_SEC restantes: os
+//      valores de todos os lances aparecem, e todo mundo (travado ou não)
+//      pode voltar a dar lances de verdade (precisa superar o maior atual).
 export const AUCTION_DURATION_SEC = 60;
-export const FIXED_BET_UNTIL_REMAINING_SEC = 30;
-export const NEW_BIDS_FROM_REMAINING_SEC = 17;
-export const VALUES_REVEAL_FROM_REMAINING_SEC = 15;
+export const BLIND_PHASE_END_REMAINING_SEC = 20;
 export const MIN_BID_INCREMENT = 50;
 // Intervalo mínimo entre 2 lances do mesmo país, pra evitar clique repetido.
 export const BID_COOLDOWN_MS = 1000;

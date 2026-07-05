@@ -11,9 +11,7 @@ import {
   TIER_ORDER,
   CONFRONT_VARIABLE,
   PRELIMINARY_ROUND_KEYS,
-  FIXED_BET_UNTIL_REMAINING_SEC,
-  NEW_BIDS_FROM_REMAINING_SEC,
-  VALUES_REVEAL_FROM_REMAINING_SEC,
+  BLIND_PHASE_END_REMAINING_SEC,
   NON_WINNER_INFLATION_EXTRA,
   SECOND_PLACE_INFLATION_EXTRA,
 } from "../config/gameConfig";
@@ -113,20 +111,19 @@ export function computeGdpForRound({ roundKey, event, finalists, confront }) {
 
 // --- Fases do leilão às cegas -------------------------------------------------
 // remainingSec: segundos restantes no cronômetro do leilão. Mesma regra pra
-// todas as rodadas (normais e final):
-//   "fixedBet" -> cada país pode dar 1 único lance selado, sem comparação
-//   "locked"   -> ninguém pode dar lance
-//   "newBids"  -> lances de verdade, precisa superar o maior lance atual
+// todas as rodadas (normais e final), só 2 fases:
+//   "blind" -> cada país pode dar 1 único lance selado a qualquer momento;
+//              assim que dá esse lance, SÓ ELE fica travado até a revelação
+//              (quem ainda não apostou nunca é travado, ver firebaseActions).
+//   "open"  -> valores revelados, todo mundo pode dar lances de verdade
+//              (precisa superar o maior lance atual).
 export function getAuctionStage(remainingSec) {
-  if (remainingSec > FIXED_BET_UNTIL_REMAINING_SEC) return "fixedBet";
-  if (remainingSec > NEW_BIDS_FROM_REMAINING_SEC) return "locked";
-  return "newBids";
+  return isBidRevealed(remainingSec) ? "open" : "blind";
 }
 
-// Os valores dos lances só ficam visíveis nos segundos finais, mesmo depois
-// que "novos lances" já foi liberado.
+// Os valores dos lances ficam visíveis a partir do fim da fase às cegas.
 export function isBidRevealed(remainingSec) {
-  return remainingSec <= VALUES_REVEAL_FROM_REMAINING_SEC;
+  return remainingSec <= BLIND_PHASE_END_REMAINING_SEC;
 }
 
 // --- Inflação cumulativa -----------------------------------------------------

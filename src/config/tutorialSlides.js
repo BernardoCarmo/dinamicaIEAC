@@ -10,9 +10,8 @@ import {
   MIN_BID_INCREMENT,
   BID_COOLDOWN_MS,
   MAX_PRELIMINARY_WINS,
-  FIXED_BET_UNTIL_REMAINING_SEC,
-  NEW_BIDS_FROM_REMAINING_SEC,
-  VALUES_REVEAL_FROM_REMAINING_SEC,
+  AUCTION_DURATION_SEC,
+  BLIND_PHASE_END_REMAINING_SEC,
   SABOTAGE_COST_PERCENT,
   SABOTAGE_GDP_CUT_PERCENT,
   STEAL_GDP_PERCENT,
@@ -100,71 +99,60 @@ export const TUTORIAL_SLIDES = [
     title: "Passo 2 — Cartas especiais",
     visual: "cards_overview",
     bullets: [
-      "Cada país já tem 1 ou 2 cartas fixas — não são sorteadas.",
+      "No sorteio inicial, cada país já recebeu 1 ou 2 cartas especiais, em segredo.",
       "Cada carta só pode ser usada 1 vez em todo o jogo.",
       "Só dá pra decidir usar quando o mestre perguntar, antes do leilão daquela rodada.",
     ],
     script:
-      "Cada país já tem sua carta guardada desde o início — vocês já viram a sua na tela do país, em segredo. Vocês só decidem SE e QUANDO usá-la, sempre que eu perguntar, antes do leilão de alguma rodada. É de uso único: depois de usar, ela some.",
+      "No sorteio do início do jogo, cada país já recebeu sua carta, em segredo — vocês já viram a sua na tela do país. Vocês só decidem SE e QUANDO usá-la, sempre que eu perguntar, antes do leilão de alguma rodada. É de uso único: depois de usar, ela some.",
   },
   {
     id: "cards_detail",
-    title: "O que cada carta faz",
+    title: "O que existe no baralho de cartas",
     visual: "cards_detail",
     bullets: [
-      "Países grandes: Porto Seguro Cambial — zera a inflação da rodada em que for usada.",
-      "Países médios: Investimento Estrangeiro Direto — +500 moedas na hora.",
-      "Países pequenos: um bônus fixo (+900 moedas) e uma carta de ataque única.",
+      "Proteção total contra a inflação de uma rodada.",
+      "Bônus de dinheiro direto no tesouro, na hora.",
+      "Cartas de ataque, que mexem no PIB de outro país.",
     ],
     script:
-      "As cartas dos países grandes protegem contra a inflação. As dos médios, e uma das dos pequenos, dão dinheiro na hora, assim que usadas. E cada país pequeno também tem uma carta de ataque — essas são especiais, vou explicar em detalhe agora.",
+      "No baralho de cartas especiais tem um pouco de tudo: tem carta que protege da inflação numa rodada, tem carta que dá dinheiro direto na hora, e tem cartas de ataque, que mexem no PIB de outro país. Ninguém sabe de antemão quem tem qual — só descobrem aos poucos, ao longo do jogo.",
   },
   {
     id: "attack_cards",
     title: "Cartas de ataque: Sabotagem e Roubo de PIB",
     visual: "attack_cards",
     bullets: [
-      `Sabotagem de PIB (Chile): paga ${pct(SABOTAGE_COST_PERCENT)}% do próprio saldo, corta ${pct(
+      `Sabotagem de PIB: paga ${pct(SABOTAGE_COST_PERCENT)}% do próprio saldo, corta ${pct(
         SABOTAGE_GDP_CUT_PERCENT
-      )}% do PIB de um país GRANDE sorteado ao acaso.`,
-      `Roubo de PIB (Portugal): rouba ${pct(STEAL_GDP_PERCENT)}% do PIB de um país ESCOLHIDO por ele, custa ${STEAL_ATTACKER_PENALTY} de PIB próprio.`,
+      )}% do PIB de um país sorteado ao acaso — pode ser qualquer um!`,
+      `Roubo de PIB: rouba ${pct(STEAL_GDP_PERCENT)}% do PIB de um país escolhido a dedo, custa ${STEAL_ATTACKER_PENALTY} de PIB próprio.`,
       "O efeito já entra no saldo na hora, mas quem atacou fica em segredo até pouco antes do leilão daquela rodada.",
     ],
     script:
-      "Duas cartas mexem direto com o país adversário. O Chile pode sabotar — sempre um país grande, sorteado, nunca escolhido por ele. Portugal pode roubar — aí ele escolhe o alvo. As duas custam caro pra quem ataca, e o efeito já é aplicado no saldo na mesma hora, pra já valer nas negociações do leilão. Mas quem foi o atacante só é revelado pouco antes do leilão daquela rodada, no telão — pra manter o suspense.",
+      "Duas cartas mexem direto com o país adversário. Uma sabota — o alvo é sorteado ao acaso, pode ser qualquer país da mesa. Outra rouba — aí quem usa escolhe o alvo a dedo. As duas custam caro pra quem ataca, e o efeito já é aplicado no saldo na mesma hora, pra já valer nas negociações do leilão. Mas quem foi o atacante só é revelado pouco antes do leilão daquela rodada, no telão — pra manter o suspense.",
   },
   {
     id: "auction_stage1",
-    title: "Passo 4 — Leilão, fase 1: aposta fixa",
+    title: "Passo 4 — Leilão, fase às cegas",
     visual: "auction_stage1",
     bullets: [
-      `Primeiros segundos (até faltar ${FIXED_BET_UNTIL_REMAINING_SEC}s): cada país pode dar 1 único lance secreto.`,
-      "Ninguém vê o valor dos outros nessa fase — é uma aposta às cegas, simultânea.",
+      `Enquanto faltar mais de ${BLIND_PHASE_END_REMAINING_SEC}s: cada país pode dar 1 lance único e secreto, quando quiser.`,
+      "Assim que um país dá esse lance, só ELE fica travado até a revelação — quem ainda não apostou nunca é travado, pode esperar à vontade.",
     ],
     script:
-      "O leilão começa com uma aposta às cegas: cada um pode dar um único lance nos primeiros segundos, sem ver o que os outros estão apostando. É a hora de arriscar um valor inicial sem saber a concorrência.",
+      "O leilão começa numa fase às cegas: cada país pode dar um único lance secreto, a qualquer momento dentro dessa janela — não precisa ser logo de cara. Assim que um país decide apostar, ele fica travado até a revelação; mas quem prefere esperar não é travado em momento nenhum, pode aguardar tranquilo.",
   },
   {
     id: "auction_stage2",
-    title: "Passo 4 — Leilão, fase 2: travado",
+    title: "Passo 4 — Leilão, fase revelada",
     visual: "auction_stage2",
     bullets: [
-      `Entre ${FIXED_BET_UNTIL_REMAINING_SEC}s e ${NEW_BIDS_FROM_REMAINING_SEC}s restantes: ninguém pode dar lance.`,
-      "É só um tempo de espera antes da reta final abrir.",
+      `Nos últimos ${BLIND_PHASE_END_REMAINING_SEC}s: os valores de todos os lances aparecem pra todo mundo.`,
+      "Todo mundo (travado ou não) pode voltar a dar lances de verdade, superando o maior lance atual.",
     ],
     script:
-      "Depois da aposta fixa, tudo trava por alguns segundos. Ninguém pode mexer em nada — é só aguardar a próxima fase abrir. Aproveitem esse tempo pra pensar na estratégia.",
-  },
-  {
-    id: "auction_stage3",
-    title: "Passo 4 — Leilão, fase 3: novos lances e revelação",
-    visual: "auction_stage3",
-    bullets: [
-      `Últimos ${NEW_BIDS_FROM_REMAINING_SEC}s: libera dar novos lances (precisa superar o maior lance atual).`,
-      `Últimos ${VALUES_REVEAL_FROM_REMAINING_SEC}s: os valores dos lances ficam visíveis pra todo mundo.`,
-    ],
-    script:
-      "Na reta final, todo mundo pode voltar a dar lances — cada novo lance precisa superar o maior lance já feito. E só nos segundos finais os valores aparecem pra todo mundo ver, o que deixa tudo bem mais emocionante até o último instante.",
+      "Nos segundos finais, os valores de todos os lances aparecem — inclusive os que já tinham sido dados às cegas. A partir daí libera pra todo mundo dar novos lances, precisando sempre superar o maior valor atual. É a reta final, bem emocionante.",
   },
   {
     id: "auction_rules",
@@ -258,5 +246,13 @@ export const TUTORIAL_SLIDES = [
     ],
     script:
       "Alguma dúvida antes de começarmos de verdade? Assim que eu fechar esse tutorial, vou liberar o sorteio dos países pra cada um de vocês. Boa sorte!",
+  },
+  {
+    id: "rules_summary",
+    title: "Resumão das regras",
+    visual: "summary",
+    bullets: ["Pode consultar essa página a qualquer momento durante o jogo, se precisar."],
+    script:
+      "Esse último slide é só um resumo rápido de tudo que a gente viu. Se bater alguma dúvida durante o jogo, é só me chamar. Agora sim, vamos começar de verdade!",
   },
 ];
