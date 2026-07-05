@@ -12,6 +12,9 @@ import {
   MIN_BID_INCREMENT,
   AUCTION_DURATION_SEC,
   SABOTAGE_COST_PERCENT,
+  SABOTAGE_GDP_CUT_PERCENT,
+  STEAL_GDP_PERCENT,
+  STEAL_ATTACKER_PENALTY,
   BID_COOLDOWN_MS,
   PRELIMINARY_ROUND_KEYS,
   MAX_PRELIMINARY_WINS,
@@ -177,34 +180,68 @@ export async function leaderDecideCard(roundKey, countryId, cardId, useCard) {
   await update(sessionRef(), updates);
 }
 
-// Carta de Sabotagem de PIB (Chile): alvo é SORTEADO aleatoriamente. Tem custo
-// imediato (% do saldo atual) e reduz o PIB que o alvo vai receber nesta
-// rodada (aplicado em creditGdp).
+// Calcula o PIB "normal" (sem ataques) que um país receberia nesta rodada, a
+// partir do evento (e do confronto, se for a final) já conhecidos nesse
+// ponto do ciclo — usado pra aplicar Sabotagem/Roubo imediatamente no saldo.
+async function computeBaselineGdp(roundKey) {
+  const [roundSnap, finalistsSnap] = await Promise.all([
+    get(sessionRef("rounds", roundKey)),
+    get(sessionRef("finalists")),
+  ]);
+  const round = roundSnap.val() || {};
+  const finalists = finalistsSnap.val() || null;
+  return computeGdpForRound({ roundKey, event: round.event, finalists, confront: round.confront });
+}
+
+// Carta de Sabotagem de PIB (Chile): alvo é SORTEADO aleatoriamente entre os
+// países grandes. Tem custo imediato (% do saldo do atacante) e corta uma
+// fatia do PIB do alvo — tudo aplicado direto no saldo na hora do uso, pra já
+// valer nas negociações do leilão desta rodada.
 export async function useSabotageCard(roundKey, attackerCountryId, cardId) {
-  const balSnap = await get(sessionRef("countries", attackerCountryId, "balance"));
+  const [balSnap, baselineGdp] = await Promise.all([
+    get(sessionRef("countries", attackerCountryId, "balance")),
+    computeBaselineGdp(roundKey),
+  ]);
   const balance = balSnap.val() ?? 0;
   const cost = Math.round(balance * SABOTAGE_COST_PERCENT);
 
   // O alvo é sempre sorteado entre os países de porte grande (nunca escolhido).
   const grandeIds = COUNTRIES.filter((c) => c.tier === "grande" && c.id !== attackerCountryId).map((c) => c.id);
   const targetId = grandeIds[Math.floor(Math.random() * grandeIds.length)];
+  const cut = Math.round(baselineGdp[targetId] * SABOTAGE_GDP_CUT_PERCENT);
+
+  const targetBalSnap = await get(sessionRef("countries", targetId, "balance"));
+  const targetBalance = targetBalSnap.val() ?? 0;
 
   await update(sessionRef(), {
     [`countries/${attackerCountryId}/balance`]: balance - cost,
+    [`countries/${targetId}/balance`]: targetBalance - cut,
     [`countries/${attackerCountryId}/cardsUsed/${cardId}`]: true,
     [`countries/${attackerCountryId}/cardsUsedInRound/${cardId}`]: roundKey,
-    [`rounds/${roundKey}/sabotage`]: { attackerId: attackerCountryId, targetId, cost },
+    [`rounds/${roundKey}/sabotage`]: { attackerId: attackerCountryId, targetId, cost, cutApplied: cut },
     [`rounds/${roundKey}/cardQuestion/responses/${attackerCountryId}/${cardId}`]: true,
   });
 }
 
-// Carta de Roubo de PIB (Portugal): alvo é ESCOLHIDO pelo líder. Custa um
-// valor fixo de PIB do próprio atacante nesta rodada (aplicado em creditGdp).
+// Carta de Roubo de PIB (Portugal): alvo é ESCOLHIDO pelo líder. Rouba uma
+// fatia do PIB do alvo e cobra um custo fixo do próprio atacante — também
+// aplicado direto no saldo na hora do uso.
 export async function useTheftCard(roundKey, attackerCountryId, targetCountryId, cardId) {
+  const [attackerBalSnap, targetBalSnap, baselineGdp] = await Promise.all([
+    get(sessionRef("countries", attackerCountryId, "balance")),
+    get(sessionRef("countries", targetCountryId, "balance")),
+    computeBaselineGdp(roundKey),
+  ]);
+  const attackerBalance = attackerBalSnap.val() ?? 0;
+  const targetBalance = targetBalSnap.val() ?? 0;
+  const stolen = Math.round(baselineGdp[targetCountryId] * STEAL_GDP_PERCENT);
+
   await update(sessionRef(), {
+    [`countries/${attackerCountryId}/balance`]: attackerBalance + stolen - STEAL_ATTACKER_PENALTY,
+    [`countries/${targetCountryId}/balance`]: targetBalance - stolen,
     [`countries/${attackerCountryId}/cardsUsed/${cardId}`]: true,
     [`countries/${attackerCountryId}/cardsUsedInRound/${cardId}`]: roundKey,
-    [`rounds/${roundKey}/theft`]: { attackerId: attackerCountryId, targetId: targetCountryId },
+    [`rounds/${roundKey}/theft`]: { attackerId: attackerCountryId, targetId: targetCountryId, stolenApplied: stolen },
     [`rounds/${roundKey}/cardQuestion/responses/${attackerCountryId}/${cardId}`]: true,
   });
 }
@@ -219,13 +256,13 @@ export async function creditGdp(roundKey) {
   const round = roundSnap.val() || {};
   const finalists = finalistsSnap.val() || null;
 
+  // Sabotagem/Roubo já foram aplicados direto no saldo quando usados (ver
+  // useSabotageCard/useTheftCard) — aqui só o PIB "normal" é creditado.
   const gdpAmounts = computeGdpForRound({
     roundKey,
     event: round.event,
     finalists,
     confront: round.confront,
-    sabotage: round.sabotage || null,
-    theft: round.theft || null,
   });
 
   const balancesBefore = {};

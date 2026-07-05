@@ -10,9 +10,6 @@ import {
   TIER_BONUS,
   TIER_ORDER,
   CONFRONT_VARIABLE,
-  SABOTAGE_GDP_CUT_PERCENT,
-  STEAL_GDP_PERCENT,
-  STEAL_ATTACKER_PENALTY,
   PRELIMINARY_ROUND_KEYS,
   FIXED_BET_UNTIL_REMAINING_SEC,
   NEW_BIDS_FROM_REMAINING_SEC,
@@ -78,14 +75,16 @@ export function computeConfrontVariable(finalistIds) {
   return { diff, type: rule.type, perCountry };
 }
 
-// --- Cálculo do PIB da rodada ------------------------------------------------
+// --- Cálculo do PIB "normal" da rodada ----------------------------------------
 // roundKey: 'r1' | 'r2' | 'r3' | 'final'
 // event: objeto retornado por drawEvent()
 // finalists: [id, id] (apenas relevante quando roundKey === 'final')
 // confront: resultado de computeConfrontVariable (apenas na final)
-// sabotage: { attackerId, targetId } se alguém usou a carta de Sabotagem de PIB
-// theft: { attackerId, targetId } se alguém usou a carta de Roubo de PIB
-export function computeGdpForRound({ roundKey, event, finalists, confront, sabotage, theft }) {
+// Não inclui efeito de Sabotagem/Roubo de PIB — essas cartas são aplicadas
+// direto no saldo, imediatamente no momento em que são usadas (ver
+// firebaseActions.useSabotageCard / useTheftCard), usando este mesmo cálculo
+// como base para saber quanto cortar/roubar.
+export function computeGdpForRound({ roundKey, event, finalists, confront }) {
   const gdpAmounts = {};
   const isFinal = roundKey === "final";
 
@@ -105,20 +104,8 @@ export function computeGdpForRound({ roundKey, event, finalists, confront, sabot
     else if (event.type === "random1" && country.id === event.randomTargetCountryId)
       eventPercent = event.gdpPercent;
 
-    let amount = country.gdpBase * (1 + structuralBonus) * (1 + eventPercent);
-    if (sabotage?.targetId === country.id) {
-      amount *= 1 - SABOTAGE_GDP_CUT_PERCENT;
-    }
+    const amount = country.gdpBase * (1 + structuralBonus) * (1 + eventPercent);
     gdpAmounts[country.id] = Math.round(amount);
-  }
-
-  // Roubo de PIB: aplicado depois, sobre o PIB já calculado (inclusive já
-  // afetado pela sabotagem, se houver) — rouba uma fatia do alvo sorteado e
-  // cobra um custo fixo do atacante.
-  if (theft) {
-    const stolen = Math.round(gdpAmounts[theft.targetId] * STEAL_GDP_PERCENT);
-    gdpAmounts[theft.targetId] -= stolen;
-    gdpAmounts[theft.attackerId] += stolen - STEAL_ATTACKER_PENALTY;
   }
 
   return gdpAmounts;

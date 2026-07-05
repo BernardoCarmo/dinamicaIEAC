@@ -4,14 +4,14 @@ import { COUNTRIES, SECOND_PLACE_INFLATION_EXTRA, NON_WINNER_INFLATION_EXTRA } f
 // Não mostra nenhum valor numérico de saldo aqui — só a taxa de inflação de
 // cada país (pública, ligada ao resultado do leilão) e um resumo narrativo,
 // sem revelar dinheiro/PIB de ninguém.
-export default function InflationPhase({ round, countries, roundLabel }) {
+export default function InflationPhase({ round, countries, roundKey, roundLabel }) {
   const winnerId = round?.auction?.winnerId ?? null;
   const secondPlaceId = round?.inflationSecondPlaceId ?? null;
   const winner = COUNTRIES.find((c) => c.id === winnerId);
 
   function lineFor(c) {
     const usedZeroInflation = c.cards.some(
-      (card) => card.effectType === "zero_inflation" && countries?.[c.id]?.cardsUsedInRound?.[card.id]
+      (card) => card.effectType === "zero_inflation" && countries?.[c.id]?.cardsUsedInRound?.[card.id] === roundKey
     );
     if (usedZeroInflation) {
       return `${c.flag} ${c.name} protegeu sua moeda e ficou imune à inflação nesta rodada.`;
