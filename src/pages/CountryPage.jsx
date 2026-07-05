@@ -102,7 +102,7 @@ export default function CountryPage() {
   const balance = countryState.balance ?? 0;
 
   const inAuctionPhase = roundPhase === "auction" && auction?.active;
-  const eligibleForThisAuction = !isFinalRound || isFinalist;
+  const eligibleForThisAuction = isFinalRound ? isFinalist : !alreadyQualifiedByWins;
   const canAffordMinBid = balance >= minNextBid;
   const onCooldown = Date.now() < cooldownUntil;
 

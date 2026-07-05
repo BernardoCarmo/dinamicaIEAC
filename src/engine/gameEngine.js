@@ -16,6 +16,8 @@ import {
   PRELIMINARY_ROUND_KEYS,
   NORMAL_REVEAL_WINDOWS,
   FINAL_REVEAL_WINDOWS,
+  NON_WINNER_INFLATION_EXTRA,
+  SECOND_PLACE_INFLATION_EXTRA,
 } from "../config/gameConfig";
 
 function shuffle(array) {
@@ -134,18 +136,39 @@ export function isBidRevealed(remainingSec, isFinal) {
 // baseRate: taxa base da rodada (pontos percentuais, ex: 5)
 // event: evento da rodada (pode aumentar a taxa via inflationBonus)
 // cardExemptCountryIds: países que usaram a carta "zero_inflation" nesta rodada
-export function computeInflation({ balances, baseRate, event, cardExemptCountryIds = [] }) {
-  const effectiveRate = baseRate + (event?.inflationBonus || 0);
+// winnerId/secondPlaceId: resultado do leilão da rodada — o vencedor não paga
+// punição extra; quem fez o 2º maior lance (arriscou e não levou) paga
+// SECOND_PLACE_INFLATION_EXTRA a mais; os demais pagam NON_WINNER_INFLATION_EXTRA.
+export function computeInflation({
+  balances,
+  baseRate,
+  event,
+  cardExemptCountryIds = [],
+  winnerId = null,
+  secondPlaceId = null,
+}) {
+  const baseEffectiveRate = baseRate + (event?.inflationBonus || 0);
   const newBalances = {};
+  const ratesByCountry = {};
+
   for (const country of COUNTRIES) {
     const current = balances[country.id] ?? 0;
     if (cardExemptCountryIds.includes(country.id)) {
+      ratesByCountry[country.id] = 0;
       newBalances[country.id] = current;
-    } else {
-      newBalances[country.id] = Math.round(current * (1 - effectiveRate / 100));
+      continue;
     }
+    let extra = 0;
+    if (country.id === winnerId) extra = 0;
+    else if (country.id === secondPlaceId) extra = SECOND_PLACE_INFLATION_EXTRA;
+    else extra = NON_WINNER_INFLATION_EXTRA;
+
+    const rate = baseEffectiveRate + extra;
+    ratesByCountry[country.id] = rate;
+    newBalances[country.id] = Math.round(current * (1 - rate / 100));
   }
-  return { effectiveRate, newBalances };
+
+  return { baseEffectiveRate, ratesByCountry, newBalances };
 }
 
 // --- Resolução do leilão -----------------------------------------------------

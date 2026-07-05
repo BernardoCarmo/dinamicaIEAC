@@ -221,6 +221,13 @@ export const PRIZES = {
 // Taxa de inflação base de cada rodada (pontos percentuais).
 export const INFLATION_RATES = { r1: 5, r2: 7, r3: 9, final: 12 };
 
+// Punição extra de inflação ligada ao resultado do leilão daquela rodada:
+// quem venceu não paga nada a mais; quem fez o 2º maior lance (arriscou e não
+// levou) paga bem mais; os demais pagam um pouco mais. Não se aplica a quem
+// estiver isento por carta (Porto Seguro Cambial).
+export const NON_WINNER_INFLATION_EXTRA = 1;
+export const SECOND_PLACE_INFLATION_EXTRA = 3;
+
 // Variável de confronto da final, de acordo com a diferença de faixa entre os
 // 2 finalistas (seção 8). "randomSymmetric" sorteia +10% ou -10% igualmente
 // para os dois; os outros casos dão bônus só ao finalista de faixa mais fraca.

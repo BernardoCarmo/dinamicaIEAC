@@ -113,7 +113,7 @@ export default function TelaoPage() {
   } else if (roundPhase === "result") {
     content = <ResultPhase round={round} roundLabel={roundLabel} prizeText={prizes[currentRoundKey]} />;
   } else if (roundPhase === "inflation") {
-    content = <InflationPhase round={round} roundLabel={roundLabel} />;
+    content = <InflationPhase round={round} countries={session.countries} roundLabel={roundLabel} />;
   } else if (roundPhase === "ranking" && currentRoundKey === "r3") {
     // Suspense proposital: não mostramos o ranking da Rodada 3, só o anúncio
     // dos finalistas em seguida — ninguém sabe quem está rico até a final.

@@ -270,6 +270,14 @@ export async function revealPrize(roundKey) {
 }
 
 export async function placeBid(roundKey, countryId, amount, serverTimeOffset = 0) {
+  if (PRELIMINARY_ROUND_KEYS.includes(roundKey)) {
+    const roundsSnap = await get(sessionRef("rounds"));
+    const capped = countriesAtWinCap(roundsSnap.val() || {});
+    if (capped.includes(countryId)) {
+      throw new Error("Seu país já está classificado para a final e não participa mais dos leilões preliminares.");
+    }
+  }
+
   const [auctionSnap, balanceSnap] = await Promise.all([
     get(sessionRef("rounds", roundKey, "auction")),
     get(sessionRef("countries", countryId, "balance")),
@@ -361,11 +369,23 @@ export async function applyInflation(roundKey) {
     )
   ).map((c) => c.id);
 
-  const { effectiveRate, newBalances } = computeInflation({
+  // Quem ficou em 2º no leilão (maior lance entre os que não venceram) paga
+  // mais inflação por ter arriscado e não levado; os demais pagam um pouco
+  // mais; o vencedor não tem punição extra.
+  const winnerId = round.auction?.winnerId ?? null;
+  const allBids = round.auction?.bids ? Object.values(round.auction.bids) : [];
+  const nonWinnerBids = allBids.filter((b) => b.countryId !== winnerId);
+  const secondPlaceId = nonWinnerBids.length
+    ? nonWinnerBids.reduce((best, b) => (b.amount > best.amount ? b : best), nonWinnerBids[0]).countryId
+    : null;
+
+  const { baseEffectiveRate, ratesByCountry, newBalances } = computeInflation({
     balances,
     baseRate: INFLATION_RATES[roundKey],
     event: round.event,
     cardExemptCountryIds,
+    winnerId,
+    secondPlaceId,
   });
 
   const updates = { roundPhase: "inflation" };
@@ -373,7 +393,9 @@ export async function applyInflation(roundKey) {
     updates[`countries/${c.id}/balance`] = newBalances[c.id];
   }
   updates[`rounds/${roundKey}/inflationApplied`] = true;
-  updates[`rounds/${roundKey}/inflationRate`] = effectiveRate;
+  updates[`rounds/${roundKey}/inflationRate`] = baseEffectiveRate;
+  updates[`rounds/${roundKey}/inflationRatesByCountry`] = ratesByCountry;
+  updates[`rounds/${roundKey}/inflationSecondPlaceId`] = secondPlaceId;
   updates[`rounds/${roundKey}/balancesBeforeInflation`] = balances;
 
   await update(sessionRef(), updates);
@@ -431,7 +453,7 @@ export async function revealRanking(roundKey) {
       ),
       auctionWon: round.auction?.winnerId === c.id,
       amountPaid: round.auction?.winnerId === c.id ? round.auction.amountPaid : 0,
-      inflationRate: round.inflationRate ?? 0,
+      inflationRate: round.inflationRatesByCountry?.[c.id] ?? round.inflationRate ?? 0,
       cardsRevealed,
       balanceAfter: balance,
     };
