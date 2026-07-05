@@ -1,19 +1,19 @@
 :root {
-  --bg: #0b1120;
-  --bg-panel: #131c31;
-  --bg-card: #1b2740;
-  --border: #2a3a5c;
-  --text: #e7ecf7;
-  --text-dim: #93a1c2;
-  --accent: #f5b942;
-  --accent-strong: #f59e0b;
-  --positive: #34d399;
-  --negative: #f87171;
-  --grande: #6d8dfc;
-  --medio: #34d399;
-  --pequeno: #f5b942;
-  --radius: 14px;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --bg: #2b2a22;
+  --bg-panel: #3a3830;
+  --bg-card: #423f35;
+  --border: #5c5847;
+  --text: #ede9e3;
+  --text-dim: #c9ae8c;
+  --accent: #d9a441;
+  --accent-strong: #bc8a34;
+  --positive: #8a9468;
+  --negative: #c1552f;
+  --grande: #8a9468;
+  --medio: #d9a441;
+  --pequeno: #c1552f;
+  --radius: 4px;
+  --shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
   font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
 }
 
@@ -29,7 +29,7 @@ body,
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top, #16213e 0%, var(--bg) 60%);
+  background: radial-gradient(circle at top, #3a3830 0%, var(--bg) 60%);
   color: var(--text);
 }
 
@@ -73,7 +73,7 @@ p {
   justify-content: center;
   gap: 8px;
   padding: 12px 22px;
-  border-radius: 10px;
+  border-radius: 4px;
   border: 1px solid var(--border);
   background: var(--bg-panel);
   color: var(--text);
@@ -85,7 +85,7 @@ p {
 
 .btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  background: #1c2947;
+  background: #454133;
 }
 
 .btn:disabled {
@@ -96,7 +96,7 @@ p {
 .btn-primary {
   background: linear-gradient(135deg, var(--accent-strong), var(--accent));
   border: none;
-  color: #1a1305;
+  color: #2b2410;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -114,7 +114,7 @@ input[type="password"],
 input[type="number"] {
   width: 100%;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: 4px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
@@ -124,7 +124,7 @@ input[type="number"] {
 .badge {
   display: inline-block;
   padding: 3px 10px;
-  border-radius: 999px;
+  border-radius: 3px;
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;

@@ -101,7 +101,7 @@ function Structure() {
             style={{
               padding: "14px 18px",
               background: i === 3 ? "var(--accent-strong)" : undefined,
-              color: i === 3 ? "#1a1305" : undefined,
+              color: i === 3 ? "#2b2410" : undefined,
               fontWeight: 700,
             }}
           >
@@ -252,9 +252,9 @@ function AuctionStage2() {
               display: "flex",
               justifyContent: "space-between",
               padding: "8px 12px",
-              borderRadius: 8,
+              borderRadius: 3,
               background: i === 0 ? "var(--accent-strong)" : "var(--bg-panel)",
-              color: i === 0 ? "#1a1305" : "var(--text)",
+              color: i === 0 ? "#2b2410" : "var(--text)",
             }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -325,7 +325,7 @@ function InflationBars() {
       {bars.map((b, i) => (
         <div key={b.label} style={{ textAlign: "center" }}>
           <motion.div
-            style={{ width: 50, background: b.color, borderRadius: 6 }}
+            style={{ width: 50, background: b.color, borderRadius: 2 }}
             initial={{ height: 0 }}
             animate={{ height: b.pct }}
             transition={{ delay: i * 0.2, duration: 0.6 }}

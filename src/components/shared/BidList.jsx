@@ -18,9 +18,9 @@ export default function BidList({ bids, revealed = true }) {
               display: "flex",
               justifyContent: "space-between",
               padding: "10px 14px",
-              borderRadius: 8,
+              borderRadius: 3,
               background: revealed && i === 0 ? "var(--accent-strong)" : "var(--bg-panel)",
-              color: revealed && i === 0 ? "#1a1305" : "var(--text)",
+              color: revealed && i === 0 ? "#2b2410" : "var(--text)",
               fontWeight: revealed && i === 0 ? 700 : 400,
             }}
           >
