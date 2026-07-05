@@ -40,12 +40,15 @@ export function drawCountryAssignment(leaderIds) {
 }
 
 // --- Sorteio de evento ------------------------------------------------------
+// Eventos "random1" (um país sorteado ao acaso) só podem sortear um país de
+// porte pequeno — dá mais chance de sorte pra quem já começa em desvantagem
+// (regra não revelada no tutorial, pra manter a suspense).
 export function drawEvent() {
   const event = shuffle(EVENTS)[0];
   const drawn = { ...event };
   if (event.type === "random1") {
-    const target = shuffle(COUNTRIES.map((c) => c.id))[0];
-    drawn.randomTargetCountryId = target;
+    const pequenoIds = COUNTRIES.filter((c) => c.tier === "pequeno").map((c) => c.id);
+    drawn.randomTargetCountryId = shuffle(pequenoIds)[0];
   }
   return drawn;
 }

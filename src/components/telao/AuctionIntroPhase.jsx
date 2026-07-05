@@ -13,15 +13,15 @@ export default function AuctionIntroPhase({ round, countries, roundKey, roundLab
     const target = COUNTRIES.find((c) => c.id === sabotage.targetId);
     attackLines.push(
       `${attacker?.flag} ${attacker?.name} pagou ${Math.round(SABOTAGE_COST_PERCENT * 100)}% do próprio saldo ` +
-        `para cortar ${Math.round(SABOTAGE_GDP_CUT_PERCENT * 100)}% do PIB de ${target?.flag} ${target?.name} nesta rodada.`
+        `para cortar ${Math.round(SABOTAGE_GDP_CUT_PERCENT * 100)}% do saldo de ${target?.flag} ${target?.name} nesta rodada.`
     );
   }
   if (theft) {
     const attacker = COUNTRIES.find((c) => c.id === theft.attackerId);
     const target = COUNTRIES.find((c) => c.id === theft.targetId);
     attackLines.push(
-      `${attacker?.flag} ${attacker?.name} roubou ${Math.round(STEAL_GDP_PERCENT * 100)}% do PIB de ` +
-        `${target?.flag} ${target?.name}, mas perdeu ${STEAL_ATTACKER_PENALTY} de PIB próprio.`
+      `${attacker?.flag} ${attacker?.name} roubou ${Math.round(STEAL_GDP_PERCENT * 100)}% do saldo de ` +
+        `${target?.flag} ${target?.name}, mas perdeu ${STEAL_ATTACKER_PENALTY} moedas do próprio tesouro.`
     );
   }
 

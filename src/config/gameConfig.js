@@ -70,7 +70,7 @@ const CARD_SABOTAGE = {
   effectType: "sabotage_gdp",
   effectText: `Paga ${Math.round(SABOTAGE_COST_PERCENT * 100)}% do seu saldo atual para cortar ${Math.round(
     SABOTAGE_GDP_CUT_PERCENT * 100
-  )}% do PIB de um país de porte grande, sorteado aleatoriamente entre eles nesta rodada.`,
+  )}% do saldo atual de um país de porte grande, sorteado aleatoriamente entre eles nesta rodada.`,
   narrative: "Uma operação de espionagem econômica sabota a produção de uma das grandes potências, sorteada ao acaso.",
 };
 
@@ -80,8 +80,8 @@ const CARD_ROUBO = {
   effectType: "steal_gdp",
   effectText: `Rouba ${Math.round(
     STEAL_GDP_PERCENT * 100
-  )}% do PIB de um país escolhido por você nesta rodada, mas custa ${STEAL_ATTACKER_PENALTY} de PIB próprio.`,
-  narrative: "Um esquema de contrabando desvia parte da produção de um país vizinho escolhido a dedo.",
+  )}% do saldo atual de um país escolhido por você nesta rodada, mas custa ${STEAL_ATTACKER_PENALTY} moedas do seu próprio tesouro.`,
+  narrative: "Um esquema de contrabando desvia parte das reservas de um país vizinho escolhido a dedo.",
 };
 
 // Os 6 países pré-configurados. Troque nome/bandeira/tags pelos países reais
@@ -128,7 +128,7 @@ export const COUNTRIES = [
     tier: "medio",
     treasuryInitial: 2500,
     gdpBase: 200,
-    themeTags: [],
+    themeTags: ["guerra"],
     cards: [CARD_MEDIO_BONUS],
   },
   {

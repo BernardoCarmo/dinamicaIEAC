@@ -198,38 +198,24 @@ export async function leaderDecideCard(roundKey, countryId, cardId, useCard) {
   await update(sessionRef(), updates);
 }
 
-// Calcula o PIB "normal" (sem ataques) que um país receberia nesta rodada, a
-// partir do evento (e do confronto, se for a final) já conhecidos nesse
-// ponto do ciclo — usado pra aplicar Sabotagem/Roubo imediatamente no saldo.
-async function computeBaselineGdp(roundKey) {
-  const [roundSnap, finalistsSnap] = await Promise.all([
-    get(sessionRef("rounds", roundKey)),
-    get(sessionRef("finalists")),
-  ]);
-  const round = roundSnap.val() || {};
-  const finalists = finalistsSnap.val() || null;
-  return computeGdpForRound({ roundKey, event: round.event, finalists, confront: round.confront });
-}
-
 // Carta de Sabotagem de PIB (Chile): alvo é SORTEADO aleatoriamente entre os
-// países grandes. Tem custo imediato (% do saldo do atacante) e corta uma
-// fatia do PIB do alvo — tudo aplicado direto no saldo na hora do uso, pra já
-// valer nas negociações do leilão desta rodada.
+// países grandes. Custo e corte são sempre uma % do SALDO ATUAL (não do PIB
+// creditado na rodada) — ex: 10% de um país com 3000 de saldo são 300, não
+// 10% do PIB de ~300 daquela rodada. Tudo aplicado direto no saldo na hora do
+// uso, pra já valer nas negociações do leilão desta rodada.
 export async function useSabotageCard(roundKey, attackerCountryId, cardId) {
-  const [balSnap, baselineGdp] = await Promise.all([
-    get(sessionRef("countries", attackerCountryId, "balance")),
-    computeBaselineGdp(roundKey),
-  ]);
-  const balance = balSnap.val() ?? 0;
-  const cost = Math.round(balance * SABOTAGE_COST_PERCENT);
-
   // O alvo é sempre sorteado entre os países de porte grande (nunca escolhido).
   const grandeIds = COUNTRIES.filter((c) => c.tier === "grande" && c.id !== attackerCountryId).map((c) => c.id);
   const targetId = grandeIds[Math.floor(Math.random() * grandeIds.length)];
-  const cut = Math.round(baselineGdp[targetId] * SABOTAGE_GDP_CUT_PERCENT);
 
-  const targetBalSnap = await get(sessionRef("countries", targetId, "balance"));
+  const [balSnap, targetBalSnap] = await Promise.all([
+    get(sessionRef("countries", attackerCountryId, "balance")),
+    get(sessionRef("countries", targetId, "balance")),
+  ]);
+  const balance = balSnap.val() ?? 0;
   const targetBalance = targetBalSnap.val() ?? 0;
+  const cost = Math.round(balance * SABOTAGE_COST_PERCENT);
+  const cut = Math.round(targetBalance * SABOTAGE_GDP_CUT_PERCENT);
 
   await update(sessionRef(), {
     [`countries/${attackerCountryId}/balance`]: balance - cost,
@@ -241,18 +227,17 @@ export async function useSabotageCard(roundKey, attackerCountryId, cardId) {
   });
 }
 
-// Carta de Roubo de PIB (Portugal): alvo é ESCOLHIDO pelo líder. Rouba uma
-// fatia do PIB do alvo e cobra um custo fixo do próprio atacante — também
-// aplicado direto no saldo na hora do uso.
+// Carta de Roubo de PIB (Portugal): alvo é ESCOLHIDO pelo líder. Rouba uma %
+// do SALDO ATUAL do alvo (mesma lógica da Sabotagem, ver acima) e cobra um
+// custo fixo do próprio atacante — também aplicado direto no saldo na hora do uso.
 export async function useTheftCard(roundKey, attackerCountryId, targetCountryId, cardId) {
-  const [attackerBalSnap, targetBalSnap, baselineGdp] = await Promise.all([
+  const [attackerBalSnap, targetBalSnap] = await Promise.all([
     get(sessionRef("countries", attackerCountryId, "balance")),
     get(sessionRef("countries", targetCountryId, "balance")),
-    computeBaselineGdp(roundKey),
   ]);
   const attackerBalance = attackerBalSnap.val() ?? 0;
   const targetBalance = targetBalSnap.val() ?? 0;
-  const stolen = Math.round(baselineGdp[targetCountryId] * STEAL_GDP_PERCENT);
+  const stolen = Math.round(targetBalance * STEAL_GDP_PERCENT);
 
   await update(sessionRef(), {
     [`countries/${attackerCountryId}/balance`]: attackerBalance + stolen - STEAL_ATTACKER_PENALTY,
@@ -500,15 +485,15 @@ export async function revealRanking(roundKey) {
       cardsRevealed.push({
         name: "Sabotagem de PIB sofrida",
         narrative: `${attackerName} sabotou seu país nesta rodada.`,
-        effectText: "Seu PIB desta rodada foi cortado em 30%.",
+        effectText: `${Math.round(SABOTAGE_GDP_CUT_PERCENT * 100)}% do seu saldo foi cortado.`,
       });
     }
     if (theft?.targetId === c.id) {
       const attackerName = countryConfig(theft.attackerId)?.name ?? "um país rival";
       cardsRevealed.push({
         name: "Roubo de PIB sofrido",
-        narrative: `${attackerName} roubou parte do seu PIB nesta rodada.`,
-        effectText: "10% do seu PIB desta rodada foi desviado.",
+        narrative: `${attackerName} roubou parte do seu saldo nesta rodada.`,
+        effectText: `${Math.round(STEAL_GDP_PERCENT * 100)}% do seu saldo foi desviado.`,
       });
     }
 
