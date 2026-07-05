@@ -185,8 +185,9 @@ export async function useSabotageCard(roundKey, attackerCountryId, cardId) {
   const balance = balSnap.val() ?? 0;
   const cost = Math.round(balance * SABOTAGE_COST_PERCENT);
 
-  const others = COUNTRIES.map((c) => c.id).filter((id) => id !== attackerCountryId);
-  const targetId = others[Math.floor(Math.random() * others.length)];
+  // O alvo é sempre sorteado entre os países de porte grande (nunca escolhido).
+  const grandeIds = COUNTRIES.filter((c) => c.tier === "grande" && c.id !== attackerCountryId).map((c) => c.id);
+  const targetId = grandeIds[Math.floor(Math.random() * grandeIds.length)];
 
   await update(sessionRef(), {
     [`countries/${attackerCountryId}/balance`]: balance - cost,

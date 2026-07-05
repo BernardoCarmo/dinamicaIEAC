@@ -70,8 +70,8 @@ const CARD_SABOTAGE = {
   effectType: "sabotage_gdp",
   effectText: `Paga ${Math.round(SABOTAGE_COST_PERCENT * 100)}% do seu saldo atual para cortar ${Math.round(
     SABOTAGE_GDP_CUT_PERCENT * 100
-  )}% do PIB de um país sorteado aleatoriamente nesta rodada.`,
-  narrative: "Uma operação de espionagem econômica sabota a produção de um país rival sorteado ao acaso.",
+  )}% do PIB de um país de porte grande, sorteado aleatoriamente entre eles nesta rodada.`,
+  narrative: "Uma operação de espionagem econômica sabota a produção de uma das grandes potências, sorteada ao acaso.",
 };
 
 const CARD_ROUBO = {
