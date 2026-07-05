@@ -14,8 +14,9 @@ import {
   STEAL_GDP_PERCENT,
   STEAL_ATTACKER_PENALTY,
   PRELIMINARY_ROUND_KEYS,
-  NORMAL_REVEAL_WINDOWS,
-  FINAL_REVEAL_WINDOWS,
+  FIXED_BET_UNTIL_REMAINING_SEC,
+  NEW_BIDS_FROM_REMAINING_SEC,
+  VALUES_REVEAL_FROM_REMAINING_SEC,
   NON_WINNER_INFLATION_EXTRA,
   SECOND_PLACE_INFLATION_EXTRA,
 } from "../config/gameConfig";
@@ -123,12 +124,22 @@ export function computeGdpForRound({ roundKey, event, finalists, confront, sabot
   return gdpAmounts;
 }
 
-// --- Janelas de revelação dos lances no leilão às cegas -----------------------
-// remainingSec: segundos restantes no cronômetro do leilão
-// isFinal: se é o leilão da rodada final (padrão de revelação diferente)
-export function isBidRevealed(remainingSec, isFinal) {
-  const windows = isFinal ? FINAL_REVEAL_WINDOWS : NORMAL_REVEAL_WINDOWS;
-  return windows.some((w) => remainingSec <= w.from && remainingSec >= w.to);
+// --- Fases do leilão às cegas -------------------------------------------------
+// remainingSec: segundos restantes no cronômetro do leilão. Mesma regra pra
+// todas as rodadas (normais e final):
+//   "fixedBet" -> cada país pode dar 1 único lance selado, sem comparação
+//   "locked"   -> ninguém pode dar lance
+//   "newBids"  -> lances de verdade, precisa superar o maior lance atual
+export function getAuctionStage(remainingSec) {
+  if (remainingSec > FIXED_BET_UNTIL_REMAINING_SEC) return "fixedBet";
+  if (remainingSec > NEW_BIDS_FROM_REMAINING_SEC) return "locked";
+  return "newBids";
+}
+
+// Os valores dos lances só ficam visíveis nos segundos finais, mesmo depois
+// que "novos lances" já foi liberado.
+export function isBidRevealed(remainingSec) {
+  return remainingSec <= VALUES_REVEAL_FROM_REMAINING_SEC;
 }
 
 // --- Inflação cumulativa -----------------------------------------------------

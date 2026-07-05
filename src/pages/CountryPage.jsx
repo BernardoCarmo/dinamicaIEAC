@@ -13,7 +13,7 @@ import {
   MAX_PRELIMINARY_WINS,
 } from "../config/gameConfig";
 import { leaderDecideCard, useSabotageCard, useTheftCard, placeBid } from "../engine/firebaseActions";
-import { isBidRevealed } from "../engine/gameEngine";
+import { isBidRevealed, getAuctionStage } from "../engine/gameEngine";
 import CountUpNumber from "../components/shared/CountUpNumber.jsx";
 import FlagBadge from "../components/shared/FlagBadge.jsx";
 import Countdown from "../components/shared/Countdown.jsx";
@@ -53,16 +53,26 @@ export default function CountryPage() {
 
   const auction = round?.auction;
   const remainingMs = useRemainingMs(auction?.endsAt, offset);
+  const remainingSec = Math.ceil(remainingMs / 1000);
   const isFinalRound = currentRoundKey === "final";
-  const revealed = isBidRevealed(Math.ceil(remainingMs / 1000), isFinalRound);
+  const revealed = isBidRevealed(remainingSec);
+  const stage = getAuctionStage(remainingSec);
 
   const bids = auction?.bids || {};
+  const ownBidsCount = Object.values(bids).filter((b) => b.countryId === countryId).length;
   const highestBid = Object.values(bids).reduce((max, b) => Math.max(max, b.amount), 0);
   const minNextBid = highestBid + MIN_BID_INCREMENT;
 
+  // Só pré-preenche o campo com o mínimo calculado quando os valores estão
+  // revelados — senão isso vazaria o lance mais alto mesmo com os números
+  // escondidos na lista.
   useEffect(() => {
-    setBidAmount(minNextBid);
-  }, [minNextBid, currentRoundKey]);
+    if (stage === "newBids" && revealed) {
+      setBidAmount(minNextBid);
+    } else {
+      setBidAmount("");
+    }
+  }, [minNextBid, currentRoundKey, stage, revealed]);
 
   // Só pra re-renderizar durante o cooldown de 1s do lance.
   useEffect(() => {
@@ -229,35 +239,73 @@ export default function CountryPage() {
               </p>
             )}
             <Countdown endsAt={auction.endsAt} offset={offset} onComplete={() => {}} />
-            <p style={{ fontSize: "0.85rem" }}>
-              {revealed ? "Lances revelados agora!" : "Leilão às cegas: os lances estão ocultos no momento."}
-            </p>
-            <BidList bids={bids} revealed={revealed} />
-            {canAffordMinBid ? (
-              <form onSubmit={handleBid} style={{ display: "flex", gap: 10, marginTop: 12 }}>
-                <input
-                  type="number"
-                  min={revealed ? minNextBid : MIN_BID_INCREMENT}
-                  max={balance}
-                  step={50}
-                  value={bidAmount}
-                  onChange={(e) => setBidAmount(e.target.value)}
-                />
-                <button className="btn btn-primary" type="submit" disabled={onCooldown}>
-                  {onCooldown ? "Aguarde..." : "Dar lance"}
-                </button>
-              </form>
-            ) : (
-              <p style={{ color: "var(--negative)", marginTop: 12 }}>
-                Seu saldo ({balance.toLocaleString("pt-BR")}) pode não ser suficiente pra continuar dando lances.
+
+            {stage === "fixedBet" && (
+              <>
+                <p style={{ fontSize: "0.85rem" }}>
+                  🔒 Fase de aposta fixa: cada país pode dar 1 lance único e secreto, sem saber o dos outros.
+                </p>
+                {ownBidsCount > 0 ? (
+                  <p style={{ opacity: 0.7 }}>Sua aposta fixa já foi enviada. Aguarde a próxima fase.</p>
+                ) : (
+                  <form onSubmit={handleBid} style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                    <input
+                      type="number"
+                      min={MIN_BID_INCREMENT}
+                      max={balance}
+                      step={50}
+                      value={bidAmount}
+                      onChange={(e) => setBidAmount(e.target.value)}
+                      placeholder="Sua aposta"
+                    />
+                    <button className="btn btn-primary" type="submit" disabled={onCooldown}>
+                      {onCooldown ? "Aguarde..." : "Enviar aposta fixa"}
+                    </button>
+                  </form>
+                )}
+              </>
+            )}
+
+            {stage === "locked" && (
+              <p style={{ fontSize: "0.9rem", marginTop: 10 }}>
+                🔒 Lances travados neste momento — aguarde a fase de novos lances abrir.
               </p>
             )}
-            <p style={{ fontSize: "0.8rem", marginTop: 6 }}>
-              {revealed
-                ? `Lance mínimo: ${minNextBid.toLocaleString("pt-BR")} moedas.`
-                : "O valor mínimo do lance está oculto — supere o lance mais alto atual (você não sabe qual é)."}{" "}
-              Máximo: seu saldo atual ({balance.toLocaleString("pt-BR")}).
-            </p>
+
+            {stage === "newBids" && (
+              <>
+                <p style={{ fontSize: "0.85rem" }}>
+                  {revealed ? "Lances revelados agora!" : "Leilão às cegas: os lances estão ocultos no momento."}
+                </p>
+                <BidList bids={bids} revealed={revealed} />
+                {canAffordMinBid ? (
+                  <form onSubmit={handleBid} style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                    <input
+                      type="number"
+                      min={revealed ? minNextBid : MIN_BID_INCREMENT}
+                      max={balance}
+                      step={50}
+                      value={bidAmount}
+                      onChange={(e) => setBidAmount(e.target.value)}
+                    />
+                    <button className="btn btn-primary" type="submit" disabled={onCooldown}>
+                      {onCooldown ? "Aguarde..." : "Dar lance"}
+                    </button>
+                  </form>
+                ) : (
+                  <p style={{ color: "var(--negative)", marginTop: 12 }}>
+                    Seu saldo ({balance.toLocaleString("pt-BR")}) pode não ser suficiente pra continuar dando lances.
+                  </p>
+                )}
+                <p style={{ fontSize: "0.8rem", marginTop: 6 }}>
+                  {revealed
+                    ? `Lance mínimo: ${minNextBid.toLocaleString("pt-BR")} moedas.`
+                    : "O valor mínimo do lance está oculto — supere o lance mais alto atual (você não sabe qual é)."}{" "}
+                  Máximo: seu saldo atual ({balance.toLocaleString("pt-BR")}).
+                </p>
+              </>
+            )}
+
             {bidError && <p style={{ color: "var(--negative)" }}>{bidError}</p>}
           </div>
         )}

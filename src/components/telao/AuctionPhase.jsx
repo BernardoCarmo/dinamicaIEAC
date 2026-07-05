@@ -1,27 +1,40 @@
 import { useRemainingMs } from "../../hooks/useRemainingMs";
-import { isBidRevealed } from "../../engine/gameEngine";
+import { isBidRevealed, getAuctionStage } from "../../engine/gameEngine";
 import Countdown from "../shared/Countdown.jsx";
 import BidList from "../shared/BidList.jsx";
 
-export default function AuctionPhase({ round, roundKey, roundLabel, offset, prizeText }) {
+const STAGE_MESSAGES = {
+  fixedBet: "🔒 Fase de aposta fixa: cada país está dando 1 lance único e secreto.",
+  locked: "🔒 Lances travados — aguarde, os novos lances abrem em instantes.",
+};
+
+export default function AuctionPhase({ round, roundLabel, offset, prizeText }) {
   const auction = round?.auction;
   const remainingMs = useRemainingMs(auction?.endsAt, offset);
   if (!auction) return null;
 
-  const isFinal = roundKey === "final";
-  const revealed = isBidRevealed(Math.ceil(remainingMs / 1000), isFinal);
+  const remainingSec = Math.ceil(remainingMs / 1000);
+  const stage = getAuctionStage(remainingSec);
+  const revealed = isBidRevealed(remainingSec);
 
   return (
     <div style={{ width: "100%", maxWidth: 720, textAlign: "center" }}>
       <div className="section-title">{roundLabel} — Leilão ao vivo</div>
       {auction.prizeRevealed && <h2 style={{ marginBottom: 20 }}>Prêmio: {prizeText}</h2>}
       <Countdown big endsAt={auction.endsAt} offset={offset} />
-      <p style={{ opacity: 0.8 }}>
-        {revealed ? "Lances revelados!" : "Lances ocultos — só aparecem em certos momentos."}
-      </p>
-      <div style={{ marginTop: 20 }}>
-        <BidList bids={auction.bids} revealed={revealed} />
-      </div>
+
+      {stage !== "newBids" ? (
+        <p style={{ opacity: 0.8, fontSize: "1.1rem" }}>{STAGE_MESSAGES[stage]}</p>
+      ) : (
+        <>
+          <p style={{ opacity: 0.8 }}>
+            {revealed ? "Lances revelados!" : "Lances liberados, mas ainda ocultos — só aparecem em instantes."}
+          </p>
+          <div style={{ marginTop: 20 }}>
+            <BidList bids={auction.bids} revealed={revealed} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

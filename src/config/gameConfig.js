@@ -239,17 +239,19 @@ export const CONFRONT_VARIABLE = {
 
 // --- Leilão -------------------------------------------------------------------
 // Todas as rodadas (1, 2, 3 e final) têm 1 minuto fixo de negociação, sem
-// prorrogação. O leilão é "às cegas": os lances ficam ocultos (só mostra quem
-// já apostou, não o valor) exceto dentro das janelas de revelação abaixo,
-// definidas em segundos restantes no cronômetro (from = maior, to = menor).
-// Rodadas normais: revela só nos últimos 15s. Final: pisca — revela dos 35s
-// aos 30s restantes, esconde de novo, e revela de vez a partir dos 10s finais.
+// prorrogação, dividido em 3 fases (mesma regra pra rodadas normais e final):
+//   1) "Aposta fixa" — enquanto restar mais que FIXED_BET_UNTIL_REMAINING_SEC:
+//      cada país pode dar 1 único lance selado (não compara com os outros).
+//   2) "Travado" — entre esse ponto e NEW_BIDS_FROM_REMAINING_SEC restantes:
+//      ninguém pode dar lance, só espera.
+//   3) "Novos lances" — a partir de NEW_BIDS_FROM_REMAINING_SEC restantes:
+//      libera lances de verdade (precisa superar o maior lance atual). Os
+//      valores em si só ficam visíveis a partir de VALUES_REVEAL_FROM_REMAINING_SEC
+//      restantes — antes disso o país só vê quem já apostou, não quanto.
 export const AUCTION_DURATION_SEC = 60;
-export const NORMAL_REVEAL_WINDOWS = [{ from: 15, to: 0 }];
-export const FINAL_REVEAL_WINDOWS = [
-  { from: 35, to: 30 },
-  { from: 10, to: 0 },
-];
+export const FIXED_BET_UNTIL_REMAINING_SEC = 30;
+export const NEW_BIDS_FROM_REMAINING_SEC = 17;
+export const VALUES_REVEAL_FROM_REMAINING_SEC = 15;
 export const MIN_BID_INCREMENT = 50;
 // Intervalo mínimo entre 2 lances do mesmo país, pra evitar clique repetido.
 export const BID_COOLDOWN_MS = 1000;

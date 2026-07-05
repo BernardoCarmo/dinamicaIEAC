@@ -23,10 +23,18 @@ import {
   resetGame,
   setPrizes,
 } from "../engine/firebaseActions";
+import { useRemainingMs } from "../hooks/useRemainingMs";
+import { getAuctionStage } from "../engine/gameEngine";
 import FlagBadge from "../components/shared/FlagBadge.jsx";
 import CountUpNumber from "../components/shared/CountUpNumber.jsx";
 import Countdown from "../components/shared/Countdown.jsx";
 import BidList from "../components/shared/BidList.jsx";
+
+const STAGE_LABELS = {
+  fixedBet: "Fase de aposta fixa (lance único e secreto)",
+  locked: "Travado (aguardando abrir novos lances)",
+  newBids: "Novos lances liberados",
+};
 
 const PRIZE_FIELDS = [
   { key: "r1", label: "Rodada 1" },
@@ -58,6 +66,8 @@ export default function MasterPanelPage() {
   const roundPhase = session?.roundPhase;
   const round = currentRoundKey ? session?.rounds?.[currentRoundKey] : null;
   const auction = round?.auction;
+  const auctionRemainingMs = useRemainingMs(auction?.endsAt, offset);
+  const auctionStage = getAuctionStage(Math.ceil(auctionRemainingMs / 1000));
 
   // Finaliza o leilão automaticamente quando o cronômetro chega a zero — o
   // mestre só clica em "começar cronômetro", o resto é automático.
@@ -268,6 +278,7 @@ export default function MasterPanelPage() {
                     Revelar prêmio
                   </button>
                 )}
+                <p style={{ fontSize: "0.85rem", color: "var(--accent)" }}>{STAGE_LABELS[auctionStage]}</p>
                 <Countdown endsAt={auction.endsAt} offset={offset} onComplete={() => finalizeAuction(currentRoundKey)} />
                 <BidList bids={auction.bids} revealed />
                 <button className="btn" style={{ marginTop: 10 }} onClick={() => finalizeAuction(currentRoundKey)}>

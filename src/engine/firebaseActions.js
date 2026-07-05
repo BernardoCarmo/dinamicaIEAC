@@ -27,6 +27,7 @@ import {
   computeWealthChampion,
   computeRanking,
   isBidRevealed,
+  getAuctionStage,
 } from "./gameEngine";
 
 const SESSION_PATH = "session";
@@ -293,18 +294,36 @@ export async function placeBid(roundKey, countryId, amount, serverTimeOffset = 0
     throw new Error("Espere 1 segundo entre um lance e outro.");
   }
 
-  const highest = bids.reduce((max, b) => Math.max(max, b.amount), 0);
-  const minNext = highest + MIN_BID_INCREMENT;
   const remainingSec = auction.endsAt ? Math.ceil((auction.endsAt - now) / 1000) : 0;
-  const revealed = isBidRevealed(remainingSec, roundKey === "final");
+  const stage = getAuctionStage(remainingSec);
+  const revealed = isBidRevealed(remainingSec);
 
-  if (amount < minNext) {
-    throw new Error(
-      revealed
-        ? `O lance precisa ser de pelo menos ${minNext} moedas.`
-        : "Lance recusado: não supera o lance mais alto atual (ainda oculto)."
-    );
+  if (stage === "locked") {
+    throw new Error("Os lances estão travados neste momento. Aguarde a próxima fase do leilão.");
   }
+
+  if (stage === "fixedBet") {
+    // Fase de aposta fixa: 1 lance selado por país, sem comparação com os outros.
+    if (ownBids.length > 0) {
+      throw new Error("Você já fez sua aposta fixa nesta rodada. Aguarde a fase de novos lances.");
+    }
+    if (amount < MIN_BID_INCREMENT) {
+      throw new Error(`Sua aposta precisa ser de pelo menos ${MIN_BID_INCREMENT} moedas.`);
+    }
+  } else {
+    // Fase de novos lances: precisa superar o maior lance atual (que pode ser
+    // uma aposta fixa da fase anterior).
+    const highest = bids.reduce((max, b) => Math.max(max, b.amount), 0);
+    const minNext = highest + MIN_BID_INCREMENT;
+    if (amount < minNext) {
+      throw new Error(
+        revealed
+          ? `O lance precisa ser de pelo menos ${minNext} moedas.`
+          : "Lance recusado: não supera o lance mais alto atual (ainda oculto)."
+      );
+    }
+  }
+
   if (amount > balance) {
     throw new Error(`Você não pode apostar mais do que seu saldo atual (${balance} moedas).`);
   }
