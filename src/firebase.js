@@ -14,9 +14,19 @@ const firebaseConfig = {
 const useEmulator = import.meta.env.VITE_USE_FIREBASE_EMULATOR === "true";
 
 // Em modo emulador não precisamos de um projeto Firebase real: um projectId
-// "demo-*" é suficiente e evita qualquer chamada à nuvem.
+// "demo-*" é suficiente e evita qualquer chamada à nuvem. Importante: NÃO
+// reaproveitar o databaseURL real aqui — o SDK deriva o namespace do
+// emulador a partir dele, então misturar um databaseURL real com um
+// projectId "demo-*" faz o app conectar num namespace diferente do que
+// "firebase emulators:start" expõe, mesmo apontando pro mesmo host:porta.
 const app = initializeApp(
-  useEmulator ? { ...firebaseConfig, projectId: "demo-dinamica-iaec" } : firebaseConfig
+  useEmulator
+    ? {
+        apiKey: "demo-key",
+        projectId: "demo-dinamica-iaec",
+        databaseURL: "https://demo-dinamica-iaec-default-rtdb.firebaseio.com",
+      }
+    : firebaseConfig
 );
 
 export const db = getDatabase(app);

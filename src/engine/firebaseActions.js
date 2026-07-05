@@ -88,6 +88,8 @@ function defaultSession() {
     wealthChampion: null,
     ranking: null,
     prizes: { ...PRIZES },
+    tutorialSlide: null,
+    tutorialCompleted: false,
   };
 }
 
@@ -121,6 +123,23 @@ export async function leaderStillExists(leaderId) {
 }
 
 // --- Sorteio inicial de países -------------------------------------------
+// --- Tutorial ------------------------------------------------------------
+// Mostrado antes do sorteio de países: o mestre navega pelos slides (setas),
+// e telão + sala de espera dos líderes espelham o mesmo slide, só como
+// visualização. O botão de sortear países só libera depois que o mestre
+// concluir o tutorial pelo menos uma vez.
+export async function startTutorial() {
+  await update(sessionRef(), { tutorialSlide: 0 });
+}
+
+export async function setTutorialSlide(index) {
+  await update(sessionRef(), { tutorialSlide: index });
+}
+
+export async function finishTutorial() {
+  await update(sessionRef(), { tutorialSlide: null, tutorialCompleted: true });
+}
+
 // Depois do sorteio, o telão passa por uma fase cosmética de "sorteio das
 // cartas" (todo mundo já tem carta fixa por faixa, mas isso cria suspense
 // antes da rodada 1 começar de verdade).

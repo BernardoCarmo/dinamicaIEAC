@@ -12,6 +12,8 @@ import RankingPhase from "../components/telao/RankingPhase.jsx";
 import VsScreen from "../components/telao/VsScreen.jsx";
 import ClosingScreen from "../components/telao/ClosingScreen.jsx";
 import CardDealPhase from "../components/telao/CardDealPhase.jsx";
+import TutorialSlide from "../components/tutorial/TutorialSlide.jsx";
+import { TUTORIAL_SLIDES } from "../config/tutorialSlides";
 
 const PREVIOUS_ROUND = { r2: "r1", r3: "r2", final: "r3" };
 
@@ -35,7 +37,15 @@ export default function TelaoPage() {
 
   let content = null;
 
-  if (session.phase === "login") {
+  if (session.phase === "login" && session.tutorialSlide != null) {
+    content = (
+      <TutorialSlide
+        slide={TUTORIAL_SLIDES[session.tutorialSlide]}
+        index={session.tutorialSlide}
+        total={TUTORIAL_SLIDES.length}
+      />
+    );
+  } else if (session.phase === "login") {
     const leaders = Object.values(session.leaders || {});
     content = (
       <div style={{ textAlign: "center" }}>

@@ -1,12 +1,15 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFirebaseValue } from "../hooks/useFirebaseValue";
+import TutorialSlide from "../components/tutorial/TutorialSlide.jsx";
+import { TUTORIAL_SLIDES } from "../config/tutorialSlides";
 
 export default function WaitingRoomPage() {
   const navigate = useNavigate();
   const leaderId = localStorage.getItem("leaderId");
   const [leaders] = useFirebaseValue("session/leaders");
   const [assignment] = useFirebaseValue("session/assignment");
+  const [tutorialSlide] = useFirebaseValue("session/tutorialSlide");
 
   useEffect(() => {
     if (!leaderId) {
@@ -29,6 +32,16 @@ export default function WaitingRoomPage() {
   }, [assignment, leaderId, navigate]);
 
   const leaderList = Object.entries(leaders || {}).sort((a, b) => a[1].joinedAt - b[1].joinedAt);
+
+  if (tutorialSlide != null) {
+    return (
+      <div className="page" style={{ justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+        <div className="container" style={{ display: "flex", justifyContent: "center" }}>
+          <TutorialSlide slide={TUTORIAL_SLIDES[tutorialSlide]} index={tutorialSlide} total={TUTORIAL_SLIDES.length} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">

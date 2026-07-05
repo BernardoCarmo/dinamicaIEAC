@@ -22,13 +22,18 @@ import {
   endGame,
   resetGame,
   setPrizes,
+  startTutorial,
+  setTutorialSlide,
+  finishTutorial,
 } from "../engine/firebaseActions";
 import { useRemainingMs } from "../hooks/useRemainingMs";
 import { getAuctionStage } from "../engine/gameEngine";
+import { TUTORIAL_SLIDES } from "../config/tutorialSlides";
 import FlagBadge from "../components/shared/FlagBadge.jsx";
 import CountUpNumber from "../components/shared/CountUpNumber.jsx";
 import Countdown from "../components/shared/Countdown.jsx";
 import BidList from "../components/shared/BidList.jsx";
+import TutorialSlide from "../components/tutorial/TutorialSlide.jsx";
 
 const STAGE_LABELS = {
   fixedBet: "Fase de aposta fixa (lance único e secreto)",
@@ -170,13 +175,60 @@ export default function MasterPanelPage() {
           </div>
         </div>
 
-        {session.phase === "login" && (
+        {session.phase === "login" && session.tutorialSlide == null && (
           <div className="card">
             <div className="section-title">Sorteio inicial</div>
             <p>Líderes conectados: {leaderCount}/6</p>
-            <button className="btn btn-primary" disabled={leaderCount < 6} onClick={drawCountries}>
-              Sortear países
-            </button>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button className="btn" disabled={leaderCount < 6} onClick={startTutorial}>
+                {session.tutorialCompleted ? "Rever tutorial" : "Iniciar tutorial"}
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={leaderCount < 6 || !session.tutorialCompleted}
+                onClick={drawCountries}
+                title={!session.tutorialCompleted ? "Conclua o tutorial pra liberar o sorteio" : ""}
+              >
+                Sortear países
+              </button>
+            </div>
+            {!session.tutorialCompleted && (
+              <p style={{ fontSize: "0.85rem", opacity: 0.7, marginTop: 8 }}>
+                O sorteio só libera depois que o tutorial for concluído.
+              </p>
+            )}
+          </div>
+        )}
+
+        {session.phase === "login" && session.tutorialSlide != null && (
+          <div className="card">
+            <TutorialSlide
+              slide={TUTORIAL_SLIDES[session.tutorialSlide]}
+              index={session.tutorialSlide}
+              total={TUTORIAL_SLIDES.length}
+            />
+            <div className="card" style={{ marginTop: 20, background: "var(--bg-panel)" }}>
+              <div className="section-title">Roteiro de fala (só você vê isso)</div>
+              <p style={{ margin: 0 }}>{TUTORIAL_SLIDES[session.tutorialSlide].script}</p>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
+              <button
+                className="btn"
+                disabled={session.tutorialSlide === 0}
+                onClick={() => setTutorialSlide(session.tutorialSlide - 1)}
+              >
+                ← Slide anterior
+              </button>
+              {session.tutorialSlide < TUTORIAL_SLIDES.length - 1 ? (
+                <button className="btn btn-primary" onClick={() => setTutorialSlide(session.tutorialSlide + 1)}>
+                  Próximo slide →
+                </button>
+              ) : (
+                <button className="btn btn-primary" onClick={finishTutorial}>
+                  Concluir tutorial e liberar sorteio
+                </button>
+              )}
+            </div>
           </div>
         )}
 
