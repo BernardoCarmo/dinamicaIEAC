@@ -150,14 +150,16 @@ export function computeInflation({ balances, baseRate, event, cardExemptCountryI
 
 // --- Resolução do leilão -----------------------------------------------------
 // bids: [{ countryId, amount, ts }]
-// barredCountryId: país que venceu o leilão anterior e não pode vencer este
-// (regra "quem venceu não vence o próximo") — se ele for o único a dar lance,
-// vence mesmo assim, pois bloquear não teria propósito sem alternativa.
-export function resolveAuction(bids, barredCountryId = null) {
+// barredCountryIds: países que já venceram o máximo de rodadas normais
+// permitido (regra "não pode vencer mais de 2 rodadas normais") e por isso não
+// podem vencer este leilão — se todos os lances forem de países barrados,
+// vence mesmo assim quem deu o maior lance, pois bloquear não teria propósito
+// sem alternativa.
+export function resolveAuction(bids, barredCountryIds = []) {
   if (!bids || bids.length === 0) {
     return { winnerId: null, amountPaid: 0 };
   }
-  const eligibleBids = barredCountryId ? bids.filter((b) => b.countryId !== barredCountryId) : bids;
+  const eligibleBids = bids.filter((b) => !barredCountryIds.includes(b.countryId));
   const pool = eligibleBids.length > 0 ? eligibleBids : bids;
   const highest = pool.reduce((best, b) => (b.amount > best.amount ? b : best), pool[0]);
   return { winnerId: highest.countryId, amountPaid: highest.amount };

@@ -249,6 +249,10 @@ export const BID_COOLDOWN_MS = 1000;
 
 export const ROUND_KEYS = ["r1", "r2", "r3", "final"];
 export const PRELIMINARY_ROUND_KEYS = ["r1", "r2", "r3"];
+// Nenhum país pode vencer mais que esse número de rodadas normais — quem
+// bate esse limite já garante vaga na final (com no máximo 3 rodadas
+// preliminares, no máximo 1 país consegue atingir 2 vitórias).
+export const MAX_PRELIMINARY_WINS = 2;
 
 export const ROUND_LABELS = {
   r1: "Rodada 1",

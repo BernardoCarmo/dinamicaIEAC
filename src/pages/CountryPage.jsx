@@ -3,7 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { useFirebaseValue } from "../hooks/useFirebaseValue";
 import { useServerTimeOffset } from "../hooks/useServerTimeOffset";
 import { useRemainingMs } from "../hooks/useRemainingMs";
-import { COUNTRIES, MIN_BID_INCREMENT, ROUND_KEYS, ROUND_LABELS, BID_COOLDOWN_MS } from "../config/gameConfig";
+import {
+  COUNTRIES,
+  MIN_BID_INCREMENT,
+  ROUND_KEYS,
+  ROUND_LABELS,
+  BID_COOLDOWN_MS,
+  PRELIMINARY_ROUND_KEYS,
+  MAX_PRELIMINARY_WINS,
+} from "../config/gameConfig";
 import { leaderDecideCard, useSabotageCard, useTheftCard, placeBid } from "../engine/firebaseActions";
 import { isBidRevealed } from "../engine/gameEngine";
 import CountUpNumber from "../components/shared/CountUpNumber.jsx";
@@ -74,6 +82,8 @@ export default function CountryPage() {
   const finalists = session.finalists || [];
   const isFinalist = finalists.includes(countryId);
   const prizes = session.prizes || {};
+  const winsSoFar = PRELIMINARY_ROUND_KEYS.filter((k) => session.rounds?.[k]?.winnerId === countryId).length;
+  const alreadyQualifiedByWins = winsSoFar >= MAX_PRELIMINARY_WINS;
 
   let statusLabel = "Ativo na disputa";
   if (session.phase === "ended") {
@@ -84,7 +94,7 @@ export default function CountryPage() {
     statusLabel = isFinalist ? "Na disputa da Final" : "Fora dos leilões, seguindo pela riqueza real";
   } else if (session.finalists && !isFinalist) {
     statusLabel = "Fora dos leilões, seguindo pela riqueza real";
-  } else if (session.finalists && isFinalist) {
+  } else if ((session.finalists && isFinalist) || alreadyQualifiedByWins) {
     statusLabel = "Classificado para a final";
   }
 

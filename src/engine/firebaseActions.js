@@ -13,6 +13,8 @@ import {
   AUCTION_DURATION_SEC,
   SABOTAGE_COST_PERCENT,
   BID_COOLDOWN_MS,
+  PRELIMINARY_ROUND_KEYS,
+  MAX_PRELIMINARY_WINS,
 } from "../config/gameConfig";
 import {
   drawCountryAssignment,
@@ -28,11 +30,20 @@ import {
 } from "./gameEngine";
 
 const SESSION_PATH = "session";
-// r2 não pode ser vencida por quem venceu r1; r3 não pode ser vencida por quem
-// venceu r2 (regra "quem venceu não vence o próximo").
-const BARRED_FROM_PREVIOUS_WINNER = { r2: "r1", r3: "r2" };
 // Mapa de "próxima rodada preliminar" usado pelo botão de avançar do mestre.
 const NEXT_PRELIMINARY_ROUND = { r1: "r2", r2: "r3" };
+
+// Países que já venceram o máximo de rodadas normais permitido (ver
+// MAX_PRELIMINARY_WINS) não podem vencer mais nenhuma — ficam automaticamente
+// classificados pra final assim que batem esse número.
+function countriesAtWinCap(rounds) {
+  const wins = {};
+  for (const roundKey of PRELIMINARY_ROUND_KEYS) {
+    const winnerId = rounds[roundKey]?.winnerId;
+    if (winnerId) wins[winnerId] = (wins[winnerId] || 0) + 1;
+  }
+  return Object.keys(wins).filter((id) => wins[id] >= MAX_PRELIMINARY_WINS);
+}
 
 function sessionRef(...segments) {
   return ref(db, [SESSION_PATH, ...segments].join("/"));
@@ -304,15 +315,14 @@ export async function finalizeAuction(roundKey) {
   // Evita finalizar duas vezes (ex: watcher do cronômetro disparando 2x).
   if (auction.finalized) return;
 
-  let barredCountryId = null;
-  const barredFromRound = BARRED_FROM_PREVIOUS_WINNER[roundKey];
-  if (barredFromRound) {
-    const prevWinnerSnap = await get(sessionRef("rounds", barredFromRound, "winnerId"));
-    barredCountryId = prevWinnerSnap.val() || null;
+  let barredCountryIds = [];
+  if (PRELIMINARY_ROUND_KEYS.includes(roundKey)) {
+    const roundsSnap = await get(sessionRef("rounds"));
+    barredCountryIds = countriesAtWinCap(roundsSnap.val() || {});
   }
 
   const bids = auction.bids ? Object.values(auction.bids) : [];
-  const { winnerId, amountPaid } = resolveAuction(bids, barredCountryId);
+  const { winnerId, amountPaid } = resolveAuction(bids, barredCountryIds);
 
   const updates = {
     [`rounds/${roundKey}/auction/active`]: false,
